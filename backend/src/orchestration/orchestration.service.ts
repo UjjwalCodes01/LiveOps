@@ -22,13 +22,15 @@ export class OrchestrationService {
   ) {}
 
   async build(sessionId: string) {
-    await this.transition(sessionId, 'building');
-    await this.executor.run({
-      sessionId,
-      phase: 'build',
-      name: 'provision_load_balancer',
+    return this.sessions.withOperationLock(sessionId, 'build', async () => {
+      await this.transition(sessionId, 'building');
+      await this.executor.run({
+        sessionId,
+        phase: 'build',
+        name: 'provision_load_balancer',
+      });
+      return this.sessions.transition(sessionId, 'ready');
     });
-    return this.sessions.transition(sessionId, 'ready');
   }
   async break(sessionId: string) {
     await this.transition(sessionId, 'broken');

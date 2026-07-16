@@ -30,6 +30,7 @@ export class SessionService implements OnModuleDestroy {
   private readonly pool?: Pool;
   private readonly testSessions = new Map<string, Session>();
   private readonly testEvents = new Map<string, SessionEvent[]>();
+  private readonly testLocks = new Set<string>();
 
   constructor(config: ConfigService) {
     const settings = config.getOrThrow<ApplicationConfiguration>('app');
@@ -46,6 +47,42 @@ export class SessionService implements OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.pool?.end();
+  }
+
+  async withOperationLock<T>(
+    sessionId: string,
+    operation: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.pool) {
+      if (this.testLocks.has(sessionId))
+        throw new Error(
+          `Session ${sessionId} already has an active operation.`,
+        );
+      this.testLocks.add(sessionId);
+      try {
+        return await callback();
+      } finally {
+        this.testLocks.delete(sessionId);
+      }
+    }
+    await this.pool.query(
+      "DELETE FROM session_operations WHERE locked_at < now() - interval '15 minutes'",
+    );
+    const result = await this.pool.query(
+      'INSERT INTO session_operations (session_id, operation) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING session_id',
+      [sessionId, operation],
+    );
+    if (!result.rowCount)
+      throw new Error(`Session ${sessionId} already has an active operation.`);
+    try {
+      return await callback();
+    } finally {
+      await this.pool.query(
+        'DELETE FROM session_operations WHERE session_id = $1',
+        [sessionId],
+      );
+    }
   }
 
   async create(): Promise<Session> {

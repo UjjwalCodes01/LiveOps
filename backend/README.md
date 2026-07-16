@@ -31,6 +31,16 @@
 $ npm install
 ```
 
+## Database migrations
+
+Set `DATABASE_URL` to the Supabase/Postgres connection string, then run this before every deployment:
+
+```bash
+$ npm run migrate
+```
+
+The runner serializes concurrent deployments with a PostgreSQL advisory lock and records completed SQL files in `schema_migrations`.
+
 ## Compile and run the project
 
 ```bash
