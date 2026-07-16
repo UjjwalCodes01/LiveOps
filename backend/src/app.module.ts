@@ -17,6 +17,10 @@ import { LifecycleModule } from './lifecycle/lifecycle.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath:
+        process.env.NODE_ENV === 'production'
+          ? ['.env.production', '.env']
+          : ['.env', '.env.local'],
       load: [configuration],
       cache: true,
     }),

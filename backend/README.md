@@ -41,6 +41,12 @@ $ npm run migrate
 
 The runner serializes concurrent deployments with a PostgreSQL advisory lock and records completed SQL files in `schema_migrations`.
 
+## Credentials
+
+Copy `backend/.env.production.example` to the ignored `backend/.env.production` file, then add real Supabase, OpenAI, and sandbox AWS values there. Never commit that file.
+
+For deployed workloads, use an ECS task role or EC2 instance role. For local sandbox testing only, the AWS SDK also accepts `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN` in the ignored `.env.production` file.
+
 ## Compile and run the project
 
 ```bash
