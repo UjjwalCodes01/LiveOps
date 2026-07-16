@@ -38,3 +38,7 @@ export interface Session {
   createdAt: string;
   updatedAt: string;
 }
+export interface CreatedSession {
+  session: Session;
+  accessToken: string;
+}

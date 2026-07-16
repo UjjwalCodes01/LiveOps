@@ -42,8 +42,10 @@ export class EventsGateway {
   @SubscribeMessage('session:join')
   async join(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { sessionId: string; since?: string },
+    @MessageBody()
+    body: { sessionId: string; since?: string; sessionToken?: string },
   ) {
+    await this.sessions.authorize(body.sessionId, body.sessionToken);
     await this.sessions.get(body.sessionId);
     void client.join(body.sessionId);
     const events = await this.sessions.eventsSince(body.sessionId, body.since);

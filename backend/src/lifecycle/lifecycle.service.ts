@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { ApplicationConfiguration } from '../config/configuration';
-import { AwsAdapter } from '../executor/adapters/aws.adapter';
+import { ExecutorService } from '../executor/executor.service';
 
 @Injectable()
 export class LifecycleService {
@@ -10,7 +10,7 @@ export class LifecycleService {
   private running = false;
   constructor(
     private readonly config: ConfigService,
-    private readonly aws: AwsAdapter,
+    private readonly executor: ExecutorService,
   ) {}
 
   @Cron('0 */5 * * * *')
@@ -19,7 +19,7 @@ export class LifecycleService {
     this.running = true;
     try {
       const settings = this.config.getOrThrow<ApplicationConfiguration>('app');
-      const deleted = await this.aws.cleanupExpiredLoadBalancers(
+      const deleted = await this.executor.cleanupExpiredResources(
         settings.awsResourceTtlMinutes,
       );
       if (deleted.length)

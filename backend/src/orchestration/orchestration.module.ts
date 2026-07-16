@@ -8,5 +8,6 @@ import { OrchestrationService } from './orchestration.service';
   imports: [SessionModule, ExecutorModule],
   controllers: [OrchestrationController],
   providers: [OrchestrationService],
+  exports: [OrchestrationService],
 })
 export class OrchestrationModule {}

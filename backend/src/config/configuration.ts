@@ -11,12 +11,15 @@ export interface ApplicationConfiguration {
   openAiMaxRetries: number;
   corsOrigins: string[];
   awsRegion: string;
+  awsAccountId?: string;
+  awsVpcId?: string;
   awsEnabled: boolean;
   awsVpcSubnets: string[];
   awsSecurityGroupId?: string;
   awsAmiId?: string;
   awsInstanceType: string;
   awsTargetPort: number;
+  awsTargetHealthPath: string;
   sessionTtlMinutes: number;
   awsResourceTtlMinutes: number;
   databaseUrl?: string;
@@ -45,6 +48,8 @@ export const configuration = registerAs(
       .split(',')
       .map((origin) => origin.trim()),
     awsRegion: process.env.AWS_REGION ?? 'ap-south-1',
+    awsAccountId: process.env.AWS_ACCOUNT_ID,
+    awsVpcId: process.env.AWS_VPC_ID,
     awsEnabled: process.env.AWS_ENABLED === 'true',
     awsVpcSubnets: (process.env.AWS_VPC_SUBNET_IDS ?? '')
       .split(',')
@@ -54,6 +59,7 @@ export const configuration = registerAs(
     awsAmiId: process.env.AWS_EC2_AMI_ID,
     awsInstanceType: process.env.AWS_EC2_INSTANCE_TYPE ?? 't3.micro',
     awsTargetPort: Number.parseInt(process.env.AWS_TARGET_PORT ?? '80', 10),
+    awsTargetHealthPath: process.env.AWS_TARGET_HEALTH_PATH ?? '/',
     sessionTtlMinutes: Number.parseInt(
       process.env.SESSION_TTL_MINUTES ?? '20',
       10,

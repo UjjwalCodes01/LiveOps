@@ -1,9 +1,14 @@
 import { Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'node:crypto';
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
 import { Pool } from 'pg';
 import { ApplicationConfiguration } from '../config/configuration';
-import { Session, SessionEvent } from '../events/domain';
+import { CreatedSession, Session, SessionEvent } from '../events/domain';
 
 interface SessionRow {
   id: string;
@@ -31,6 +36,7 @@ export class SessionService implements OnModuleDestroy {
   private readonly testSessions = new Map<string, Session>();
   private readonly testEvents = new Map<string, SessionEvent[]>();
   private readonly testLocks = new Set<string>();
+  private readonly testTokenHashes = new Map<string, string>();
 
   constructor(config: ConfigService) {
     const settings = config.getOrThrow<ApplicationConfiguration>('app');
@@ -85,7 +91,7 @@ export class SessionService implements OnModuleDestroy {
     }
   }
 
-  async create(): Promise<Session> {
+  async create(): Promise<CreatedSession> {
     const timestamp = new Date().toISOString();
     const session: Session = {
       id: randomUUID(),
@@ -94,22 +100,40 @@ export class SessionService implements OnModuleDestroy {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    const accessToken = randomBytes(32).toString('base64url');
+    const accessTokenHash = this.hashToken(accessToken);
     if (!this.pool) {
       this.testSessions.set(session.id, session);
       this.testEvents.set(session.id, []);
-      return session;
+      this.testTokenHashes.set(session.id, accessTokenHash);
+      return { session, accessToken };
     }
     await this.pool.query(
-      'INSERT INTO sessions (id, concept, state, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)',
+      'INSERT INTO sessions (id, concept, state, created_at, updated_at, access_token_hash) VALUES ($1, $2, $3, $4, $5, $6)',
       [
         session.id,
         session.concept,
         session.state,
         session.createdAt,
         session.updatedAt,
+        accessTokenHash,
       ],
     );
-    return session;
+    return { session, accessToken };
+  }
+
+  async authorize(sessionId: string, token?: string): Promise<void> {
+    if (!token) throw new NotFoundException('Session was not found.');
+    const expected = !this.pool
+      ? this.testTokenHashes.get(sessionId)
+      : (
+          await this.pool.query<{ access_token_hash: string | null }>(
+            'SELECT access_token_hash FROM sessions WHERE id = $1',
+            [sessionId],
+          )
+        ).rows[0]?.access_token_hash;
+    if (!expected || !this.tokensMatch(expected, this.hashToken(token)))
+      throw new NotFoundException('Session was not found.');
   }
 
   async get(sessionId: string): Promise<Session> {
@@ -214,5 +238,14 @@ export class SessionService implements OnModuleDestroy {
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     };
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+  private tokensMatch(expected: string, actual: string): boolean {
+    const left = Buffer.from(expected);
+    const right = Buffer.from(actual);
+    return left.length === right.length && timingSafeEqual(left, right);
   }
 }

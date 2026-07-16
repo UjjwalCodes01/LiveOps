@@ -5,13 +5,9 @@ import { AppModule } from '../src/app.module';
 import { AwsAdapter } from '../src/executor/adapters/aws.adapter';
 
 interface SessionResponse {
-  id: string;
+  session: { id: string };
+  accessToken: string;
 }
-interface SessionEventResponse {
-  action?: string;
-  result?: { loadBalancerArn?: string };
-}
-
 const runSandboxTest = process.env.RUN_AWS_INTEGRATION_TESTS === 'true';
 
 (runSandboxTest ? describe : describe.skip)(
@@ -21,7 +17,6 @@ const runSandboxTest = process.env.RUN_AWS_INTEGRATION_TESTS === 'true';
     let aws: AwsAdapter;
     let apiKey: string;
     let sessionId: string;
-    let loadBalancerArn: string | undefined;
 
     beforeAll(async () => {
       apiKey = process.env.API_KEYS?.split(',')[0] ?? '';
@@ -36,7 +31,7 @@ const runSandboxTest = process.env.RUN_AWS_INTEGRATION_TESTS === 'true';
     }, 30_000);
 
     afterAll(async () => {
-      if (loadBalancerArn) await aws.teardown(loadBalancerArn);
+      if (sessionId) await aws.cleanupSession(sessionId);
       await app?.close();
     }, 330_000);
 
@@ -47,18 +42,13 @@ const runSandboxTest = process.env.RUN_AWS_INTEGRATION_TESTS === 'true';
         .post('/api/sessions')
         .set(headers)
         .expect(201);
-      sessionId = (session.body as SessionResponse).id;
+      const created = session.body as SessionResponse;
+      sessionId = created.session.id;
+      headers['x-session-token'] = created.accessToken;
       await request(server)
         .post(`/api/sessions/${sessionId}/build`)
         .set(headers)
         .expect(201);
-      const events = await request(server)
-        .get(`/api/sessions/${sessionId}/events`)
-        .set(headers)
-        .expect(200);
-      loadBalancerArn = (events.body as SessionEventResponse[]).find(
-        (event) => event.action === 'provision_load_balancer',
-      )?.result?.loadBalancerArn;
       await request(server)
         .post(`/api/sessions/${sessionId}/break`)
         .set(headers)

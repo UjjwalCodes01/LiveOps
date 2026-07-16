@@ -6,7 +6,7 @@ describe('SessionService', () => {
     const service = new SessionService({
       getOrThrow: () => ({ environment: 'test' }),
     } as never);
-    const session = await service.create();
+    const { session } = await service.create();
     await service.appendEvent({
       id: 'first',
       sessionId: session.id,

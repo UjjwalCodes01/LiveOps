@@ -35,6 +35,14 @@ import { createHash } from 'node:crypto';
 import { ApplicationConfiguration } from '../../config/configuration';
 import { ActionName } from '../actions';
 
+export type ProgressReporter = (
+  action: string,
+  type: 'action_started' | 'action_completed',
+  command: string,
+  explanation: string,
+  result?: Record<string, unknown>,
+) => Promise<void>;
+
 @Injectable()
 export class AwsAdapter {
   private readonly client: ElasticLoadBalancingV2Client;
@@ -49,13 +57,14 @@ export class AwsAdapter {
   async run(
     action: ActionName,
     sessionId: string,
+    report?: ProgressReporter,
   ): Promise<Record<string, unknown>> {
     this.requireEnabled();
     switch (action) {
       case 'inspect_load_balancers':
         return this.inspect(sessionId);
       case 'provision_load_balancer':
-        return this.provision(sessionId);
+        return this.provision(sessionId, report);
       case 'inject_target_failure':
         return this.updateTarget(sessionId, false);
       case 'diagnose_target_health':
@@ -292,7 +301,10 @@ export class AwsAdapter {
     );
     return { loadBalancers: taggedLoadBalancers.filter(Boolean) };
   }
-  private async provision(sessionId: string): Promise<Record<string, unknown>> {
+  private async provision(
+    sessionId: string,
+    report?: ProgressReporter,
+  ): Promise<Record<string, unknown>> {
     const { awsVpcSubnets, awsSecurityGroupId, awsAmiId, awsInstanceType } =
       this.settings;
     if (awsVpcSubnets.length < 2 || !awsSecurityGroupId || !awsAmiId)
@@ -310,35 +322,54 @@ export class AwsAdapter {
     let targetGroupArn: string | undefined;
     let loadBalancerArn: string | undefined;
     try {
-      const instances = await this.ec2.send(
-        new RunInstancesCommand({
-          ImageId: awsAmiId,
-          InstanceType: awsInstanceType as _InstanceType,
-          MinCount: 3,
-          MaxCount: 3,
-          SubnetId: awsVpcSubnets[0],
-          SecurityGroupIds: [awsSecurityGroupId],
-          TagSpecifications: [
-            {
-              ResourceType: 'instance',
-              Tags: [
-                { Key: 'project', Value: 'bbf-demo' },
-                { Key: 'session_id', Value: sessionId },
-                { Key: 'managed_by', Value: 'build-break-fix' },
-                { Key: 'expires_at', Value: expiresAt },
-              ],
-            },
-          ],
-        }),
+      await report?.(
+        'create_ec2_targets',
+        'action_started',
+        'AWS SDK EC2: RunInstances',
+        'Creating three EC2 targets across the configured subnets.',
       );
-      instanceIds =
-        instances.Instances?.flatMap((instance) =>
-          instance.InstanceId ? [instance.InstanceId] : [],
-        ) ?? [];
+      const instanceResponses = await Promise.all(
+        Array.from({ length: 3 }, (_, index) =>
+          this.ec2.send(
+            new RunInstancesCommand({
+              ImageId: awsAmiId,
+              InstanceType: awsInstanceType as _InstanceType,
+              MinCount: 1,
+              MaxCount: 1,
+              SubnetId: awsVpcSubnets[index % awsVpcSubnets.length],
+              SecurityGroupIds: [awsSecurityGroupId],
+              TagSpecifications: [
+                {
+                  ResourceType: 'instance',
+                  Tags: [
+                    { Key: 'project', Value: 'bbf-demo' },
+                    { Key: 'session_id', Value: sessionId },
+                    { Key: 'managed_by', Value: 'build-break-fix' },
+                    { Key: 'expires_at', Value: expiresAt },
+                  ],
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      instanceIds = instanceResponses.flatMap(
+        (instances) =>
+          instances.Instances?.flatMap((instance) =>
+            instance.InstanceId ? [instance.InstanceId] : [],
+          ) ?? [],
+      );
       if (instanceIds.length !== 3)
         throw new ServiceUnavailableException(
           'AWS did not create all three target instances.',
         );
+      await report?.(
+        'create_ec2_targets',
+        'action_completed',
+        'AWS SDK EC2: RunInstances',
+        'Created three EC2 targets.',
+        { instanceIds },
+      );
       const subnet = await this.ec2.send(
         new DescribeSubnetsCommand({ SubnetIds: [awsVpcSubnets[0]] }),
       );
@@ -347,6 +378,12 @@ export class AwsAdapter {
         throw new ServiceUnavailableException(
           'AWS did not return a VPC for the configured subnet.',
         );
+      await report?.(
+        'create_target_group',
+        'action_started',
+        'AWS SDK ELBv2: CreateTargetGroup',
+        'Creating the HTTP target group.',
+      );
       const targetGroup = await this.client.send(
         new CreateTargetGroupCommand({
           Name: `bbf-tg-${suffix}`,
@@ -355,7 +392,7 @@ export class AwsAdapter {
           VpcId: vpcId,
           TargetType: 'instance',
           HealthCheckProtocol: 'HTTP',
-          HealthCheckPath: '/',
+          HealthCheckPath: this.settings.awsTargetHealthPath,
           Tags: [
             { Key: 'project', Value: 'bbf-demo' },
             { Key: 'session_id', Value: sessionId },
@@ -369,6 +406,18 @@ export class AwsAdapter {
         throw new ServiceUnavailableException(
           'AWS did not return a target group ARN.',
         );
+      await report?.(
+        'create_target_group',
+        'action_completed',
+        'AWS SDK ELBv2: CreateTargetGroup',
+        'Created the target group.',
+      );
+      await report?.(
+        'create_application_load_balancer',
+        'action_started',
+        'AWS SDK ELBv2: CreateLoadBalancer',
+        'Creating the Application Load Balancer.',
+      );
       const response = await this.client.send(
         new CreateLoadBalancerCommand({
           Name: `bbf-${suffix}`,
@@ -391,9 +440,34 @@ export class AwsAdapter {
           'AWS did not return an Application Load Balancer ARN.',
         );
       loadBalancerArn = loadBalancer.LoadBalancerArn;
+      await report?.(
+        'create_application_load_balancer',
+        'action_completed',
+        'AWS SDK ELBv2: CreateLoadBalancer',
+        'Created the Application Load Balancer.',
+        { dnsName: loadBalancer.DNSName ?? '' },
+      );
+      await report?.(
+        'wait_for_ec2_targets',
+        'action_started',
+        'AWS SDK EC2 waiter: waitUntilInstanceRunning',
+        'Waiting for all EC2 targets to enter the running state.',
+      );
       await waitUntilInstanceRunning(
         { client: this.ec2, maxWaitTime: 300 },
         { InstanceIds: instanceIds },
+      );
+      await report?.(
+        'wait_for_ec2_targets',
+        'action_completed',
+        'AWS SDK EC2 waiter: waitUntilInstanceRunning',
+        'All EC2 targets are running.',
+      );
+      await report?.(
+        'register_targets',
+        'action_started',
+        'AWS SDK ELBv2: RegisterTargets',
+        'Registering the EC2 targets with the target group.',
       );
       await this.client.send(
         new RegisterTargetsCommand({
@@ -404,6 +478,18 @@ export class AwsAdapter {
           })),
         }),
       );
+      await report?.(
+        'register_targets',
+        'action_completed',
+        'AWS SDK ELBv2: RegisterTargets',
+        'Registered the EC2 targets.',
+      );
+      await report?.(
+        'create_listener',
+        'action_started',
+        'AWS SDK ELBv2: CreateListener',
+        'Creating the HTTP listener that forwards traffic to the target group.',
+      );
       await this.client.send(
         new CreateListenerCommand({
           LoadBalancerArn: loadBalancer.LoadBalancerArn,
@@ -411,6 +497,18 @@ export class AwsAdapter {
           Port: 80,
           DefaultActions: [{ Type: 'forward', TargetGroupArn: targetGroupArn }],
         }),
+      );
+      await report?.(
+        'create_listener',
+        'action_completed',
+        'AWS SDK ELBv2: CreateListener',
+        'Created the HTTP listener.',
+      );
+      await report?.(
+        'wait_for_target_health',
+        'action_started',
+        'AWS SDK ELBv2 waiter: waitUntilTargetInService',
+        'Waiting for all registered targets to pass health checks.',
       );
       await waitUntilTargetInService(
         { client: this.client, maxWaitTime: 300 },
@@ -421,6 +519,12 @@ export class AwsAdapter {
             Port: this.settings.awsTargetPort,
           })),
         },
+      );
+      await report?.(
+        'wait_for_target_health',
+        'action_completed',
+        'AWS SDK ELBv2 waiter: waitUntilTargetInService',
+        'All targets are healthy and receiving traffic.',
       );
       return {
         loadBalancerArn: loadBalancer.LoadBalancerArn,

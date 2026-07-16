@@ -9,7 +9,7 @@ import { ApplicationConfiguration } from '../config/configuration';
 import { EventsService } from '../events/events.service';
 import { Phase } from '../events/domain';
 import { ALLOWED_ACTIONS_BY_PHASE, ActionName } from '../executor/actions';
-import { ExecutorService } from '../executor/executor.service';
+import { OrchestrationService } from '../orchestration/orchestration.service';
 import { SessionService } from '../sessions/session.service';
 
 interface AgentDecision {
@@ -32,7 +32,7 @@ export class AgentService {
   constructor(
     private readonly config: ConfigService,
     private readonly sessions: SessionService,
-    private readonly executor: ExecutorService,
+    private readonly orchestration: OrchestrationService,
     private readonly events: EventsService,
   ) {
     this.settings = config.getOrThrow<ApplicationConfiguration>('app');
@@ -41,7 +41,7 @@ export class AgentService {
     this.client = new OpenAI({
       apiKey: this.settings.openAiApiKey,
       timeout: this.settings.openAiTimeoutMs,
-      maxRetries: this.settings.openAiMaxRetries,
+      maxRetries: 0,
     });
   }
 
@@ -55,20 +55,7 @@ export class AgentService {
         `Phase ${phase} is invalid while the session is ${session.state}.`,
       );
     }
-    let decision: AgentDecision;
-    try {
-      decision = await this.decide(sessionId, phase, session.state);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Agent unavailable';
-      await this.events.emit({
-        sessionId,
-        phase,
-        type: 'action_failed',
-        explanation: `Agent decision failed: ${message}`,
-      });
-      throw error;
-    }
+    const decision = await this.decide(sessionId, phase, session.state);
     await this.events.emit({
       sessionId,
       phase,
@@ -76,7 +63,12 @@ export class AgentService {
       action: decision.action,
       explanation: decision.explanation,
     });
-    return this.executor.run({ sessionId, phase, name: decision.action });
+    const updatedSession = await this.orchestration.executeAction(
+      sessionId,
+      phase,
+      decision.action,
+    );
+    return { session: updatedSession };
   }
 
   private async decide(
@@ -85,6 +77,52 @@ export class AgentService {
     state: string,
   ): Promise<AgentDecision> {
     const allowed = ALLOWED_ACTIONS_BY_PHASE[phase];
+    for (
+      let attempt = 0;
+      attempt <= this.settings.openAiMaxRetries;
+      attempt += 1
+    ) {
+      try {
+        return await this.requestDecision(sessionId, phase, state, allowed);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Agent unavailable';
+        if (attempt === this.settings.openAiMaxRetries) {
+          const action = this.fallbackAction(phase);
+          await this.events.emit({
+            sessionId,
+            phase,
+            type: 'action_failed',
+            action,
+            explanation: `Agent unavailable after ${attempt + 1} attempts: ${message}. Using the verified fallback action.`,
+          });
+          return {
+            action,
+            explanation:
+              'The agent is unavailable, so the platform is continuing with the predefined safe action for this lesson step.',
+          };
+        }
+        const delayMs = 500 * 2 ** attempt;
+        await this.events.emit({
+          sessionId,
+          phase,
+          type: 'action_failed',
+          explanation: `Agent temporarily unavailable; retrying in ${delayMs} ms (${attempt + 1}/${this.settings.openAiMaxRetries + 1}).`,
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    throw new ServiceUnavailableException(
+      'Agent decision retries were exhausted.',
+    );
+  }
+
+  private async requestDecision(
+    sessionId: string,
+    phase: Phase,
+    state: string,
+    allowed: readonly ActionName[],
+  ): Promise<AgentDecision> {
     const completion = await this.client.chat.completions.create({
       model: this.settings.openAiModel,
       temperature: 0,
@@ -123,6 +161,17 @@ export class AgentService {
         'Agent proposed an action outside the permitted schema.',
       );
     return parsed;
+  }
+
+  private fallbackAction(phase: Phase): ActionName {
+    const actions: Record<Phase, ActionName> = {
+      build: 'provision_load_balancer',
+      explore: 'inspect_load_balancers',
+      break: 'inject_target_failure',
+      diagnose: 'diagnose_target_health',
+      fix: 'restore_target',
+    };
+    return actions[phase];
   }
 
   private isDecision(

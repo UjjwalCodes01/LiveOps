@@ -27,7 +27,21 @@ export class ExecutorService {
       explanation: `Starting ${action.name.replaceAll('_', ' ')}.`,
     });
     try {
-      const result = await this.aws.run(action.name, action.sessionId);
+      const result = await this.aws.run(
+        action.name,
+        action.sessionId,
+        async (subAction, type, subCommand, explanation, subResult) => {
+          await this.events.emit({
+            sessionId: action.sessionId,
+            phase: action.phase,
+            type,
+            action: subAction,
+            command: subCommand,
+            explanation,
+            result: subResult,
+          });
+        },
+      );
       await this.events.emit({
         sessionId: action.sessionId,
         phase: action.phase,
@@ -54,6 +68,10 @@ export class ExecutorService {
       });
       throw error;
     }
+  }
+
+  async cleanupExpiredResources(maxAgeMinutes: number): Promise<string[]> {
+    return this.aws.cleanupExpiredLoadBalancers(maxAgeMinutes);
   }
 
   private operationFor(action: ExecutorAction['name']): string {
