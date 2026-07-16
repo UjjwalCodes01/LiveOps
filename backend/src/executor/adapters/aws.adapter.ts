@@ -471,12 +471,55 @@ export class AwsAdapter {
     register: boolean,
   ): Promise<Record<string, unknown>> {
     const target = await this.target(sessionId);
-    if (register) await this.client.send(new RegisterTargetsCommand(target));
-    else await this.client.send(new DeregisterTargetsCommand(target));
+    const health = await this.client.send(
+      new DescribeTargetHealthCommand(target),
+    );
+    const selected = this.selectTarget(
+      target.Targets,
+      health.TargetHealthDescriptions ?? [],
+      register,
+    );
+    if (!selected.Id)
+      throw new ServiceUnavailableException(
+        'Selected target has no instance ID.',
+      );
+    const selectedTarget = {
+      TargetGroupArn: target.TargetGroupArn,
+      Targets: [{ Id: selected.Id, Port: selected.Port }],
+    };
+    if (register)
+      await this.client.send(new RegisterTargetsCommand(selectedTarget));
+    else await this.client.send(new DeregisterTargetsCommand(selectedTarget));
     return {
-      targetId: target.Targets[0].Id,
+      targetId: selected.Id,
       state: register ? 'registered' : 'deregistered',
     };
+  }
+
+  private selectTarget(
+    targets: { Id?: string; Port?: number }[],
+    health: { Target?: { Id?: string }; TargetHealth?: { State?: string } }[],
+    register: boolean,
+  ): { Id?: string; Port?: number } {
+    const states = new Map(
+      health.map((description) => [
+        description.Target?.Id,
+        description.TargetHealth?.State,
+      ]),
+    );
+    const sortedTargets = [...targets].sort((left, right) =>
+      (left.Id ?? '').localeCompare(right.Id ?? ''),
+    );
+    const selected = register
+      ? sortedTargets.find((target) => states.get(target.Id) !== 'healthy')
+      : sortedTargets.find((target) => states.get(target.Id) === 'healthy');
+    if (!selected)
+      throw new BadRequestException(
+        register
+          ? 'No failed target is available to restore.'
+          : 'No healthy target is available to fail.',
+      );
+    return selected;
   }
   private async diagnose(sessionId: string): Promise<Record<string, unknown>> {
     const target = await this.target(sessionId);
