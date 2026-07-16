@@ -21,6 +21,8 @@ async function bootstrap() {
       config.sessionTtlMinutes < 1 ||
       config.awsResourceTtlMinutes < 1 ||
       !config.awsEnabled ||
+      !config.awsAccountId ||
+      !config.awsVpcId ||
       config.awsVpcSubnets.length < 2 ||
       !config.awsSecurityGroupId ||
       !config.awsAmiId)

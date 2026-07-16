@@ -25,6 +25,7 @@ import {
   waitUntilLoadBalancersDeleted,
   waitUntilTargetInService,
 } from '@aws-sdk/client-elastic-load-balancing-v2';
+import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 import {
   BadRequestException,
   Injectable,
@@ -47,11 +48,13 @@ export type ProgressReporter = (
 export class AwsAdapter {
   private readonly client: ElasticLoadBalancingV2Client;
   private readonly ec2: EC2Client;
+  private readonly sts: STSClient;
   constructor(private readonly config: ConfigService) {
     this.client = new ElasticLoadBalancingV2Client({
       region: this.settings.awsRegion,
     });
     this.ec2 = new EC2Client({ region: this.settings.awsRegion });
+    this.sts = new STSClient({ region: this.settings.awsRegion });
   }
 
   async run(
@@ -60,6 +63,7 @@ export class AwsAdapter {
     report?: ProgressReporter,
   ): Promise<Record<string, unknown>> {
     this.requireEnabled();
+    await this.ensureSandboxAccount();
     switch (action) {
       case 'inspect_load_balancers':
         return this.inspect(sessionId);
@@ -76,11 +80,13 @@ export class AwsAdapter {
 
   async teardown(loadBalancerArn: string): Promise<void> {
     this.requireEnabled();
+    await this.ensureSandboxAccount();
     await this.deleteLoadBalancerAndWait(loadBalancerArn);
   }
 
   async cleanupExpiredLoadBalancers(maxAgeMinutes: number): Promise<string[]> {
     if (!this.settings.awsEnabled) return [];
+    await this.ensureSandboxAccount();
     const cutoff = Date.now() - maxAgeMinutes * 60_000;
     const expiredSessionIds = new Set<string>();
     const instances = await this.ec2.send(
@@ -166,6 +172,7 @@ export class AwsAdapter {
 
   async cleanupSession(sessionId: string): Promise<void> {
     this.requireEnabled();
+    await this.ensureSandboxAccount();
     const loadBalancers = await this.client.send(
       new DescribeLoadBalancersCommand({}),
     );
@@ -228,6 +235,19 @@ export class AwsAdapter {
 
   private get settings(): ApplicationConfiguration {
     return this.config.getOrThrow<ApplicationConfiguration>('app');
+  }
+
+  private async ensureSandboxAccount(): Promise<void> {
+    const settings = this.settings;
+    if (!settings.awsAccountId || !settings.awsVpcId)
+      throw new ServiceUnavailableException(
+        'AWS_ACCOUNT_ID and AWS_VPC_ID are required for sandbox validation.',
+      );
+    const identity = await this.sts.send(new GetCallerIdentityCommand({}));
+    if (identity.Account !== settings.awsAccountId)
+      throw new ServiceUnavailableException(
+        'AWS credentials do not belong to the configured sandbox account.',
+      );
   }
   private requireEnabled(): void {
     if (!this.settings.awsEnabled)
@@ -310,6 +330,16 @@ export class AwsAdapter {
     if (awsVpcSubnets.length < 2 || !awsSecurityGroupId || !awsAmiId)
       throw new BadRequestException(
         'AWS_VPC_SUBNET_IDS, AWS_SECURITY_GROUP_ID, and AWS_EC2_AMI_ID are required to provision the load-balancing lesson.',
+      );
+    const subnetValidation = await this.ec2.send(
+      new DescribeSubnetsCommand({ SubnetIds: awsVpcSubnets }),
+    );
+    const vpcIds = new Set(
+      subnetValidation.Subnets?.map((subnet) => subnet.VpcId).filter(Boolean),
+    );
+    if (vpcIds.size !== 1 || !vpcIds.has(this.settings.awsVpcId))
+      throw new BadRequestException(
+        'All configured subnets must belong to the configured sandbox VPC.',
       );
     const suffix = createHash('sha256')
       .update(sessionId)

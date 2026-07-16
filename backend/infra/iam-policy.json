@@ -2,7 +2,7 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ReadNetworkAndTaggedDemoResources",
+      "Sid": "ReadSandboxInfrastructure",
       "Effect": "Allow",
       "Action": [
         "ec2:DescribeInstances",
@@ -10,25 +10,79 @@
         "elasticloadbalancing:DescribeLoadBalancers",
         "elasticloadbalancing:DescribeTargetGroups",
         "elasticloadbalancing:DescribeTargetHealth",
-        "elasticloadbalancing:DescribeTags"
+        "elasticloadbalancing:DescribeTags",
+        "sts:GetCallerIdentity"
       ],
       "Resource": "*"
     },
     {
-      "Sid": "ProvisionAndTeardownSandboxDemo",
+      "Sid": "CreateOnlyTaggedSandboxResources",
       "Effect": "Allow",
       "Action": [
         "ec2:RunInstances",
-        "ec2:TerminateInstances",
         "elasticloadbalancing:CreateLoadBalancer",
-        "elasticloadbalancing:DeleteLoadBalancer",
         "elasticloadbalancing:CreateTargetGroup",
-        "elasticloadbalancing:DeleteTargetGroup",
         "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:RegisterTargets"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/project": "bbf-demo",
+          "aws:RequestTag/managed_by": "build-break-fix"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": ["project", "session_id", "managed_by", "expires_at"]
+        }
+      }
+    },
+    {
+      "Sid": "UseOnlyConfiguredSandboxNetwork",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": [
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:subnet/<SUBNET_ID_1>",
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:subnet/<SUBNET_ID_2>",
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:security-group/<SECURITY_GROUP_ID>",
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:image/<AMI_ID>",
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:instance/*",
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:volume/*",
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:network-interface/*"
+      ],
+      "Condition": {
+        "StringEquals": { "ec2:Vpc": "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:vpc/<VPC_ID>" }
+      }
+    },
+    {
+      "Sid": "ModifyOnlyBuildBreakFixLoadBalancers",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DeleteLoadBalancer",
+        "elasticloadbalancing:CreateListener"
+      ],
+      "Resource": "arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:loadbalancer/app/bbf-*/*"
+    },
+    {
+      "Sid": "ModifyOnlyBuildBreakFixTargetGroups",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DeleteTargetGroup",
         "elasticloadbalancing:RegisterTargets",
         "elasticloadbalancing:DeregisterTargets"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:elasticloadbalancing:<AWS_REGION>:<AWS_ACCOUNT_ID>:targetgroup/bbf-tg-*/*"
+    },
+    {
+      "Sid": "TerminateOnlyTaggedDemoInstances",
+      "Effect": "Allow",
+      "Action": "ec2:TerminateInstances",
+      "Resource": "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/project": "bbf-demo",
+          "ec2:ResourceTag/managed_by": "build-break-fix"
+        }
+      }
     }
   ]
 }
