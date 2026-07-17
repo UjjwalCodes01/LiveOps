@@ -1,0 +1,45 @@
+name: sweep-expired-aws-resources
+
+# Runs independently of the backend app process — this is the "external
+# sweeper" required by AGENT.md §6.2/§7, so orphaned AWS demo resources
+# still get cleaned up even if the app is crashed or not deployed.
+#
+# Requires these repository secrets to be set before this workflow can do
+# anything (it's a no-op — see the "AWS_ENABLED not set" guard in the
+# script itself — until they are):
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_ACCOUNT_ID
+# and these repository variables:
+#   AWS_RESOURCE_TTL_MINUTES (optional, defaults to 20)
+
+on:
+  schedule:
+    - cron: '0 * * * *' # hourly
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List what would be deleted without deleting it'
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  sweep:
+    if: ${{ vars.SWEEP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --omit=dev
+      - run: node scripts/sweep-expired-resources.cjs ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          AWS_ENABLED: 'true'
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_RESOURCE_TTL_MINUTES: ${{ vars.AWS_RESOURCE_TTL_MINUTES }}

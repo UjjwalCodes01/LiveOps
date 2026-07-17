@@ -1,29 +1,87 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import { AppModule } from '../src/app.module';
+import { configureApplication } from '../src/bootstrap';
 
-describe('AppController (e2e)', () => {
+interface CreatedSessionResponse {
+  session: { id: string; state: string };
+  accessToken: string;
+}
+
+describe('API health and auth contract (e2e)', () => {
   let app: INestApplication<App>;
+  const apiKey = 'e2e-test-api-key';
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+  beforeAll(async () => {
+    process.env.API_KEYS = apiKey;
+    // AgentService requires OPENAI_API_KEY to construct at all (see
+    // src/agent/agent.service.ts), even though this suite never exercises
+    // the /agent/execute route — a full AppModule can't be wired up
+    // without it. The value is never used against the real OpenAI API here.
+    process.env.OPENAI_API_KEY ??= 'e2e-test-openai-key';
+    const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-
     app = moduleFixture.createNestApplication();
+    configureApplication(app);
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  afterAll(async () => {
+    await app.close();
   });
 
-  afterEach(async () => {
-    await app.close();
+  it('GET /api/health is public and reports liveness without an API key', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/health')
+      .expect(200);
+    expect(response.body).toMatchObject({ status: 'ok' });
+  });
+
+  it('GET /api/health/ready is public and reports readiness', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/health/ready')
+      .expect(200);
+    expect(response.body).toMatchObject({ status: 'ready' });
+  });
+
+  it('rejects requests with no or an invalid x-api-key', async () => {
+    await request(app.getHttpServer()).post('/api/sessions').expect(401);
+    await request(app.getHttpServer())
+      .post('/api/sessions')
+      .set('x-api-key', 'wrong-key')
+      .expect(401);
+  });
+
+  it('creates a session and enforces its session token on subsequent access', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/sessions')
+      .set('x-api-key', apiKey)
+      .expect(201);
+    const { session, accessToken } = created.body as CreatedSessionResponse;
+    expect(session.state).toBe('created');
+    expect(typeof accessToken).toBe('string');
+
+    // A missing or wrong session token returns 404, not 401 — unauthenticated
+    // callers must not be able to distinguish an existing session from a
+    // nonexistent one.
+    await request(app.getHttpServer())
+      .get(`/api/sessions/${session.id}`)
+      .set('x-api-key', apiKey)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`/api/sessions/${session.id}`)
+      .set('x-api-key', apiKey)
+      .set('x-session-token', 'wrong-token')
+      .expect(404);
+
+    const fetched = await request(app.getHttpServer())
+      .get(`/api/sessions/${session.id}`)
+      .set('x-api-key', apiKey)
+      .set('x-session-token', accessToken)
+      .expect(200);
+    expect(fetched.body).toMatchObject({ id: session.id, state: 'created' });
   });
 });

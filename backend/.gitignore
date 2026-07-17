@@ -43,6 +43,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# rendered IAM policy embeds real account/resource IDs
+/infra/iam-policy.rendered.json
+
 # temp directory
 .temp
 .tmp

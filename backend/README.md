@@ -23,13 +23,64 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+The **Build. Break. Fix.** backend (NestJS). It orchestrates a live-infrastructure
+teaching session: an OpenAI-driven agent provisions a real AWS Application
+Load Balancer + EC2 targets, injects a real target failure, diagnoses it, and
+fixes it — every action streamed to the frontend over Socket.IO as it
+happens, through a single allow-listed instrumented executor
+(`ExecutorService` → `AwsAdapter`). See `AGENT.md` at the repo root for the
+full architecture and guardrails.
 
 ## Project setup
 
 ```bash
 $ npm install
 ```
+
+## Configuration
+
+Copy `.env.example` to the ignored `.env` file and fill in real values —
+`.env.example` documents every variable the app reads, grouped by server,
+database, auth, OpenAI, CORS, session lifecycle, and AWS sandbox settings.
+Never commit `.env`.
+
+A few defaults worth knowing:
+- `PORT` defaults to `4000` (not `3000`) specifically so the backend doesn't
+  collide with the frontend's Next.js dev server, which defaults to `3000`.
+  `CORS_ORIGINS` defaults to `http://localhost:3000` to match that frontend
+  origin — both the HTTP CORS policy and the Socket.IO `/events` gateway use
+  this same list.
+- `SESSION_TTL_MINUTES` controls how long an unfinished session (not
+  `completed`/`failed`) can sit idle before a background job (`LifecycleService`,
+  every 5 minutes) marks it `failed` and, if `AWS_ENABLED=true`, tears down
+  any AWS resources tagged with that session's ID — independent of
+  `AWS_RESOURCE_TTL_MINUTES`, which reaps tagged AWS resources by their own
+  creation age regardless of session state. A session actively mid-operation
+  (an active row in `session_operations`) is never expired out from under it.
+  All of this cleanup is narrated through the same event pipeline as everything
+  else, so it's visible in a session's event log, not a silent side effect.
+- `SESSION_RETENTION_DAYS` controls how long a `completed`/`failed` session
+  (and its full event log, via `ON DELETE CASCADE`) is kept before being
+  hard-deleted, so Postgres storage doesn't grow unbounded.
+- In production (`NODE_ENV=production`), the app refuses to boot unless the
+  database, API key, OpenAI, and full AWS sandbox configuration are all
+  present and valid — see `validateProductionConfiguration` in
+  `src/bootstrap.ts`.
+
+For deployed workloads, use an ECS task role or EC2 instance role for AWS
+credentials. For local sandbox testing only, the AWS SDK also accepts
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional
+`AWS_SESSION_TOKEN` in the ignored `.env` file.
+
+## Health checks
+
+- `GET /api/health` — fast liveness probe, no dependencies checked.
+- `GET /api/health/ready` — readiness probe; also verifies the database
+  connection and returns 503 if it's unreachable. Use this one for load
+  balancer / orchestrator health checks.
+
+Both are unauthenticated (`@Public()`), unlike every other route, which
+requires a valid `x-api-key` header.
 
 ## Database migrations
 
@@ -40,12 +91,6 @@ $ npm run migrate
 ```
 
 The runner serializes concurrent deployments with a PostgreSQL advisory lock and records completed SQL files in `schema_migrations`.
-
-## Credentials
-
-Copy `backend/.env.production.example` to the ignored `backend/.env.production` file, then add real Supabase, OpenAI, and sandbox AWS values there. Never commit that file.
-
-For deployed workloads, use an ECS task role or EC2 instance role. For local sandbox testing only, the AWS SDK also accepts `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN` in the ignored `.env.production` file.
 
 ## Compile and run the project
 
@@ -69,46 +114,54 @@ $ npm run test
 # e2e tests
 $ npm run test:e2e
 
+# real AWS sandbox lifecycle test (creates and deletes billable AWS resources)
+$ npm run test:aws-integration
+
 # test coverage
 $ npm run test:cov
 ```
 
+`npm run test:aws-integration` is intentionally opt-in. It requires `AWS_ENABLED=true`, a dedicated sandbox account/VPC, at least two subnets, a security group, an AMI serving the configured HTTP health endpoint, `DATABASE_URL`, `API_KEYS`, and `OPENAI_API_KEY` in the ignored `.env` file. It verifies build → break → diagnose → fix, checks the persisted intermediate provisioning events, then confirms teardown removed the session's tagged ALB, target group, and active EC2 instances. Run it only after attaching and validating the sandbox IAM policy.
+
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Per `AGENT.md`, the target deployment shape is ECS Fargate or a single EC2
+instance for the NestJS backend, with the frontend deployed separately
+(Vercel/Amplify). There is no managed one-command deploy for this app — it
+needs a real Postgres instance and a sandboxed AWS account, both outside
+Nest's control. The steps:
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+1. Provision Postgres (e.g. Supabase, RDS) and set `DATABASE_URL`.
+2. Create the dedicated sandbox AWS account/VPC described in `AGENT.md` §6.3,
+   then render and attach `infra/iam-policy.json` to the ECS task role or
+   EC2 instance role that will run this app — see `infra/README.md`.
+3. Run `infra/create-budget-alarm.sh` against that account so cost overruns
+   page you independently of whether the app is healthy.
+4. Set every variable in `.env.example` in your deployment platform's
+   secret/config store (never bake `.env` into an image).
+5. Build and run:
+   ```bash
+   npm ci
+   npm run build
+   npm run start:prod   # runs migrations, then node dist/main
+   ```
+   `start:prod` runs `npm run migrate` first — make sure the deploying
+   principal's `DATABASE_URL` has DDL privileges.
+6. Point your load balancer's health check at `GET /api/health/ready`
+   (verifies the database connection), and liveness at `GET /api/health`.
+7. Schedule `scripts/sweep-expired-resources.cjs` independently of the app
+   (`.github/workflows/sweep.yml` is a ready-made hourly GitHub Actions
+   version) so orphaned AWS resources still get cleaned up if the app itself
+   is down.
+8. CI (`.github/workflows/backend-ci.yml`) runs build, lint, unit, and e2e
+   tests on every push/PR touching `backend/`; there is no CD step wired up
+   — deploying is a manual, deliberate action per the steps above.
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+None of this has been exercised against a live AWS/Postgres account from
+this environment — validate steps 1–3 yourself before treating a deployment
+as demo-ready, and run `npm run test:aws-integration` (see above) against
+the real sandbox as the final check.
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+UNLICENSED — private, not for redistribution (see `package.json`).

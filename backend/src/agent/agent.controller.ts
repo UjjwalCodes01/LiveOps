@@ -1,4 +1,5 @@
 import { Controller, Param, Post, Body, Headers } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IsIn } from 'class-validator';
 import { PHASES } from '../events/domain';
 import type { Phase } from '../events/domain';
@@ -15,7 +16,11 @@ export class AgentController {
     private readonly agent: AgentService,
     private readonly sessions: SessionService,
   ) {}
-  @Post('execute') async execute(
+  // Stricter than the global default: this route calls OpenAI on every
+  // request, so it carries real external cost/latency the other routes don't.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('execute')
+  async execute(
     @Param('sessionId') sessionId: string,
     @Body() body: ExecuteAgentDto,
     @Headers('x-session-token') token?: string,

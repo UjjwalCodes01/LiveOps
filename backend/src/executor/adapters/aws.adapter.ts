@@ -49,6 +49,7 @@ export class AwsAdapter {
   private readonly client: ElasticLoadBalancingV2Client;
   private readonly ec2: EC2Client;
   private readonly sts: STSClient;
+  private sandboxAccountVerified = false;
   constructor(private readonly config: ConfigService) {
     this.client = new ElasticLoadBalancingV2Client({
       region: this.settings.awsRegion,
@@ -142,7 +143,6 @@ export class AwsAdapter {
     const response = await this.client.send(
       new DescribeLoadBalancersCommand({}),
     );
-    const deleted = [...expiredSessionIds];
     for (const loadBalancer of response.LoadBalancers ?? []) {
       if (
         !loadBalancer.LoadBalancerArn ||
@@ -165,6 +165,11 @@ export class AwsAdapter {
       if (!isDemoResource || !sessionId) continue;
       expiredSessionIds.add(sessionId);
     }
+    // Snapshot only after every discovery path (instances, target groups,
+    // load balancers) has had a chance to add to the set — taking it any
+    // earlier silently drops ALB-only expirations from the returned list,
+    // even though cleanupSession() below still tears them down correctly.
+    const deleted = [...expiredSessionIds];
     for (const sessionId of expiredSessionIds)
       await this.cleanupSession(sessionId);
     return deleted;
@@ -233,11 +238,78 @@ export class AwsAdapter {
       );
   }
 
+  async inspectSessionResources(sessionId: string): Promise<{
+    loadBalancerArns: string[];
+    targetGroupArns: string[];
+    activeInstanceIds: string[];
+  }> {
+    this.requireEnabled();
+    await this.ensureSandboxAccount();
+    const [loadBalancers, targetGroups, instances] = await Promise.all([
+      this.client.send(new DescribeLoadBalancersCommand({})),
+      this.client.send(new DescribeTargetGroupsCommand({})),
+      this.ec2.send(
+        new DescribeInstancesCommand({
+          Filters: [
+            { Name: 'tag:session_id', Values: [sessionId] },
+            { Name: 'tag:project', Values: ['bbf-demo'] },
+            {
+              Name: 'instance-state-name',
+              Values: ['pending', 'running', 'stopping', 'stopped'],
+            },
+          ],
+        }),
+      ),
+    ]);
+    const matchingLoadBalancers = await this.resourcesForSession(
+      loadBalancers.LoadBalancers?.flatMap((resource) =>
+        resource.LoadBalancerArn ? [resource.LoadBalancerArn] : [],
+      ) ?? [],
+      sessionId,
+    );
+    const matchingTargetGroups = await this.resourcesForSession(
+      targetGroups.TargetGroups?.flatMap((resource) =>
+        resource.TargetGroupArn ? [resource.TargetGroupArn] : [],
+      ) ?? [],
+      sessionId,
+    );
+    return {
+      loadBalancerArns: matchingLoadBalancers,
+      targetGroupArns: matchingTargetGroups,
+      activeInstanceIds:
+        instances.Reservations?.flatMap(
+          (reservation) => reservation.Instances ?? [],
+        ).flatMap((instance) =>
+          instance.InstanceId ? [instance.InstanceId] : [],
+        ) ?? [],
+    };
+  }
+
   private get settings(): ApplicationConfiguration {
     return this.config.getOrThrow<ApplicationConfiguration>('app');
   }
 
+  private async resourcesForSession(
+    arns: string[],
+    sessionId: string,
+  ): Promise<string[]> {
+    const matching: string[] = [];
+    for (const arn of arns) {
+      const tags = await this.client.send(
+        new DescribeTagsCommand({ ResourceArns: [arn] }),
+      );
+      if (
+        (tags.TagDescriptions?.[0]?.Tags ?? []).some(
+          (tag) => tag.Key === 'session_id' && tag.Value === sessionId,
+        )
+      )
+        matching.push(arn);
+    }
+    return matching;
+  }
+
   private async ensureSandboxAccount(): Promise<void> {
+    if (this.sandboxAccountVerified) return;
     const settings = this.settings;
     if (!settings.awsAccountId || !settings.awsVpcId)
       throw new ServiceUnavailableException(
@@ -248,12 +320,55 @@ export class AwsAdapter {
       throw new ServiceUnavailableException(
         'AWS credentials do not belong to the configured sandbox account.',
       );
+    this.sandboxAccountVerified = true;
   }
   private requireEnabled(): void {
     if (!this.settings.awsEnabled)
       throw new ServiceUnavailableException(
         'AWS execution is disabled. Set AWS_ENABLED=true only in the dedicated demo account.',
       );
+  }
+
+  // The AWS SDK already retries throttling internally, but silently — the
+  // student watching the event stream sees nothing until either success or
+  // an outright failure. This adds a further, *observable* retry layer on
+  // top for the build phase specifically, narrating each backoff instead of
+  // letting a throttled request look like a stall or a hang.
+  private isThrottlingError(error: unknown): boolean {
+    const name =
+      error && typeof error === 'object' && 'name' in error
+        ? String(error.name)
+        : '';
+    return [
+      'ThrottlingException',
+      'Throttling',
+      'RequestLimitExceeded',
+      'TooManyRequestsException',
+      'RequestThrottledException',
+    ].includes(name);
+  }
+  private async withThrottleNarration<T>(
+    operation: () => Promise<T>,
+    describe: string,
+    report: ProgressReporter | undefined,
+    maxAttempts = 4,
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (!this.isThrottlingError(error) || attempt >= maxAttempts - 1)
+          throw error;
+        const delayMs = 1_000 * 2 ** attempt;
+        await report?.(
+          'aws_throttled',
+          'action_started',
+          describe,
+          `AWS is throttling requests; retrying ${describe} in ${delayMs} ms (attempt ${attempt + 2}/${maxAttempts}).`,
+        );
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
   }
   private async target(sessionId: string) {
     const groups = await this.client.send(new DescribeTargetGroupsCommand({}));
@@ -360,26 +475,31 @@ export class AwsAdapter {
       );
       const instanceResponses = await Promise.all(
         Array.from({ length: 3 }, (_, index) =>
-          this.ec2.send(
-            new RunInstancesCommand({
-              ImageId: awsAmiId,
-              InstanceType: awsInstanceType as _InstanceType,
-              MinCount: 1,
-              MaxCount: 1,
-              SubnetId: awsVpcSubnets[index % awsVpcSubnets.length],
-              SecurityGroupIds: [awsSecurityGroupId],
-              TagSpecifications: [
-                {
-                  ResourceType: 'instance',
-                  Tags: [
-                    { Key: 'project', Value: 'bbf-demo' },
-                    { Key: 'session_id', Value: sessionId },
-                    { Key: 'managed_by', Value: 'build-break-fix' },
-                    { Key: 'expires_at', Value: expiresAt },
+          this.withThrottleNarration(
+            () =>
+              this.ec2.send(
+                new RunInstancesCommand({
+                  ImageId: awsAmiId,
+                  InstanceType: awsInstanceType as _InstanceType,
+                  MinCount: 1,
+                  MaxCount: 1,
+                  SubnetId: awsVpcSubnets[index % awsVpcSubnets.length],
+                  SecurityGroupIds: [awsSecurityGroupId],
+                  TagSpecifications: [
+                    {
+                      ResourceType: 'instance',
+                      Tags: [
+                        { Key: 'project', Value: 'bbf-demo' },
+                        { Key: 'session_id', Value: sessionId },
+                        { Key: 'managed_by', Value: 'build-break-fix' },
+                        { Key: 'expires_at', Value: expiresAt },
+                      ],
+                    },
                   ],
-                },
-              ],
-            }),
+                }),
+              ),
+            'AWS SDK EC2: RunInstances',
+            report,
           ),
         ),
       );
@@ -414,22 +534,27 @@ export class AwsAdapter {
         'AWS SDK ELBv2: CreateTargetGroup',
         'Creating the HTTP target group.',
       );
-      const targetGroup = await this.client.send(
-        new CreateTargetGroupCommand({
-          Name: `bbf-tg-${suffix}`,
-          Protocol: 'HTTP',
-          Port: this.settings.awsTargetPort,
-          VpcId: vpcId,
-          TargetType: 'instance',
-          HealthCheckProtocol: 'HTTP',
-          HealthCheckPath: this.settings.awsTargetHealthPath,
-          Tags: [
-            { Key: 'project', Value: 'bbf-demo' },
-            { Key: 'session_id', Value: sessionId },
-            { Key: 'managed_by', Value: 'build-break-fix' },
-            { Key: 'expires_at', Value: expiresAt },
-          ],
-        }),
+      const targetGroup = await this.withThrottleNarration(
+        () =>
+          this.client.send(
+            new CreateTargetGroupCommand({
+              Name: `bbf-tg-${suffix}`,
+              Protocol: 'HTTP',
+              Port: this.settings.awsTargetPort,
+              VpcId: vpcId,
+              TargetType: 'instance',
+              HealthCheckProtocol: 'HTTP',
+              HealthCheckPath: this.settings.awsTargetHealthPath,
+              Tags: [
+                { Key: 'project', Value: 'bbf-demo' },
+                { Key: 'session_id', Value: sessionId },
+                { Key: 'managed_by', Value: 'build-break-fix' },
+                { Key: 'expires_at', Value: expiresAt },
+              ],
+            }),
+          ),
+        'AWS SDK ELBv2: CreateTargetGroup',
+        report,
       );
       targetGroupArn = targetGroup.TargetGroups?.[0]?.TargetGroupArn;
       if (!targetGroupArn)
@@ -448,21 +573,26 @@ export class AwsAdapter {
         'AWS SDK ELBv2: CreateLoadBalancer',
         'Creating the Application Load Balancer.',
       );
-      const response = await this.client.send(
-        new CreateLoadBalancerCommand({
-          Name: `bbf-${suffix}`,
-          Type: 'application',
-          Scheme: 'internet-facing',
-          IpAddressType: 'ipv4',
-          Subnets: awsVpcSubnets,
-          SecurityGroups: [awsSecurityGroupId],
-          Tags: [
-            { Key: 'project', Value: 'bbf-demo' },
-            { Key: 'session_id', Value: sessionId },
-            { Key: 'managed_by', Value: 'build-break-fix' },
-            { Key: 'expires_at', Value: expiresAt },
-          ],
-        }),
+      const response = await this.withThrottleNarration(
+        () =>
+          this.client.send(
+            new CreateLoadBalancerCommand({
+              Name: `bbf-${suffix}`,
+              Type: 'application',
+              Scheme: 'internet-facing',
+              IpAddressType: 'ipv4',
+              Subnets: awsVpcSubnets,
+              SecurityGroups: [awsSecurityGroupId],
+              Tags: [
+                { Key: 'project', Value: 'bbf-demo' },
+                { Key: 'session_id', Value: sessionId },
+                { Key: 'managed_by', Value: 'build-break-fix' },
+                { Key: 'expires_at', Value: expiresAt },
+              ],
+            }),
+          ),
+        'AWS SDK ELBv2: CreateLoadBalancer',
+        report,
       );
       const loadBalancer = response.LoadBalancers?.[0];
       if (!loadBalancer?.LoadBalancerArn)
@@ -499,14 +629,19 @@ export class AwsAdapter {
         'AWS SDK ELBv2: RegisterTargets',
         'Registering the EC2 targets with the target group.',
       );
-      await this.client.send(
-        new RegisterTargetsCommand({
-          TargetGroupArn: targetGroupArn,
-          Targets: instanceIds.map((Id) => ({
-            Id,
-            Port: this.settings.awsTargetPort,
-          })),
-        }),
+      await this.withThrottleNarration(
+        () =>
+          this.client.send(
+            new RegisterTargetsCommand({
+              TargetGroupArn: targetGroupArn,
+              Targets: instanceIds.map((Id) => ({
+                Id,
+                Port: this.settings.awsTargetPort,
+              })),
+            }),
+          ),
+        'AWS SDK ELBv2: RegisterTargets',
+        report,
       );
       await report?.(
         'register_targets',
@@ -520,13 +655,20 @@ export class AwsAdapter {
         'AWS SDK ELBv2: CreateListener',
         'Creating the HTTP listener that forwards traffic to the target group.',
       );
-      await this.client.send(
-        new CreateListenerCommand({
-          LoadBalancerArn: loadBalancer.LoadBalancerArn,
-          Protocol: 'HTTP',
-          Port: 80,
-          DefaultActions: [{ Type: 'forward', TargetGroupArn: targetGroupArn }],
-        }),
+      await this.withThrottleNarration(
+        () =>
+          this.client.send(
+            new CreateListenerCommand({
+              LoadBalancerArn: loadBalancer.LoadBalancerArn,
+              Protocol: 'HTTP',
+              Port: 80,
+              DefaultActions: [
+                { Type: 'forward', TargetGroupArn: targetGroupArn },
+              ],
+            }),
+          ),
+        'AWS SDK ELBv2: CreateListener',
+        report,
       );
       await report?.(
         'create_listener',

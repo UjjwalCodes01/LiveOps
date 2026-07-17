@@ -74,6 +74,10 @@ export class ExecutorService {
     return this.aws.cleanupExpiredLoadBalancers(maxAgeMinutes);
   }
 
+  async cleanupSession(sessionId: string): Promise<void> {
+    await this.aws.cleanupSession(sessionId);
+  }
+
   private operationFor(action: ExecutorAction['name']): string {
     const operations: Record<ExecutorAction['name'], string> = {
       inspect_load_balancers:

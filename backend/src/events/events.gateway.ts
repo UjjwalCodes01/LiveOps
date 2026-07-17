@@ -12,6 +12,10 @@ import { ApplicationConfiguration } from '../config/configuration';
 import { SessionService } from '../sessions/session.service';
 import { SessionEvent } from './domain';
 
+// CORS is configured server-wide in ConfiguredSocketIoAdapter (see
+// socket-io.adapter.ts), not here — decorator options evaluate before
+// ConfigModule has loaded .env, so a namespace-level `cors` option here
+// would silently miss .env-only CORS_ORIGINS values.
 @WebSocketGateway({
   namespace: '/events',
   transports: ['websocket'],

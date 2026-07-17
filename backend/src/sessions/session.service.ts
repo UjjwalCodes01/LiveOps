@@ -8,7 +8,24 @@ import {
 } from 'node:crypto';
 import { Pool } from 'pg';
 import { ApplicationConfiguration } from '../config/configuration';
-import { CreatedSession, Session, SessionEvent } from '../events/domain';
+import { CreatedSession, Phase, Session, SessionEvent } from '../events/domain';
+
+// A stale/abandoned operation lock (see withOperationLock) is treated as
+// released after this many minutes, so a crashed request can't wedge a
+// session forever. expireStale() uses the same threshold to decide whether
+// a session is actually mid-operation (skip it) or just genuinely idle.
+const OPERATION_LOCK_STALE_MINUTES = 15;
+
+const PHASE_BY_STATE: Record<Session['state'], Phase> = {
+  created: 'build',
+  building: 'build',
+  ready: 'explore',
+  broken: 'break',
+  diagnosing: 'diagnose',
+  fixing: 'fix',
+  completed: 'fix',
+  failed: 'fix',
+};
 
 interface SessionRow {
   id: string;
@@ -55,6 +72,10 @@ export class SessionService implements OnModuleDestroy {
     await this.pool?.end();
   }
 
+  async checkConnection(): Promise<void> {
+    if (this.pool) await this.pool.query('SELECT 1');
+  }
+
   async withOperationLock<T>(
     sessionId: string,
     operation: string,
@@ -73,7 +94,8 @@ export class SessionService implements OnModuleDestroy {
       }
     }
     await this.pool.query(
-      "DELETE FROM session_operations WHERE locked_at < now() - interval '15 minutes'",
+      'DELETE FROM session_operations WHERE locked_at < now() - make_interval(mins => $1::int)',
+      [OPERATION_LOCK_STALE_MINUTES],
     );
     const result = await this.pool.query(
       'INSERT INTO session_operations (session_id, operation) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING session_id',
@@ -222,6 +244,91 @@ export class SessionService implements OnModuleDestroy {
       timestamp: new Date(row.timestamp).toISOString(),
       durationMs: row.duration_ms ?? undefined,
     }));
+  }
+
+  // Only expires sessions that are both idle past the TTL AND not currently
+  // mid-operation (no fresh row in session_operations) — otherwise a build
+  // that legitimately takes a few minutes could be marked failed, and its
+  // AWS resources torn down, while it's still running.
+  async expireStale(
+    maxAgeMinutes: number,
+  ): Promise<Array<{ id: string; phase: Phase }>> {
+    if (!this.pool) {
+      const cutoff = Date.now() - maxAgeMinutes * 60_000;
+      const expired: Array<{ id: string; phase: Phase }> = [];
+      for (const session of this.testSessions.values()) {
+        if (
+          session.state !== 'completed' &&
+          session.state !== 'failed' &&
+          !this.testLocks.has(session.id) &&
+          Date.parse(session.updatedAt) <= cutoff
+        ) {
+          expired.push({
+            id: session.id,
+            phase: PHASE_BY_STATE[session.state],
+          });
+          this.testSessions.set(session.id, {
+            ...session,
+            state: 'failed',
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+      return expired;
+    }
+    const response = await this.pool.query<{
+      id: string;
+      previous_state: Session['state'];
+    }>(
+      `UPDATE sessions
+       SET state = 'failed', updated_at = now()
+       FROM (
+         SELECT id, state FROM sessions
+         WHERE state NOT IN ('completed', 'failed')
+           AND updated_at < now() - make_interval(mins => $1::int)
+           AND NOT EXISTS (
+             SELECT 1 FROM session_operations so
+             WHERE so.session_id = sessions.id
+               AND so.locked_at >= now() - make_interval(mins => $2::int)
+           )
+       ) AS stale
+       WHERE sessions.id = stale.id
+       RETURNING sessions.id, stale.state AS previous_state`,
+      [maxAgeMinutes, OPERATION_LOCK_STALE_MINUTES],
+    );
+    return response.rows.map((row) => ({
+      id: row.id,
+      phase: PHASE_BY_STATE[row.previous_state],
+    }));
+  }
+
+  // Hard-deletes sessions (and, via ON DELETE CASCADE, their events) once
+  // they've been in a terminal state for longer than the retention window,
+  // so Postgres storage doesn't grow unbounded. Unfinished sessions are
+  // handled by expireStale() first and only become eligible here once
+  // they've transitioned to 'failed'.
+  async deleteExpiredSessions(retentionDays: number): Promise<number> {
+    if (!this.pool) {
+      const cutoff = Date.now() - retentionDays * 86_400_000;
+      let deleted = 0;
+      for (const session of [...this.testSessions.values()]) {
+        if (
+          (session.state === 'completed' || session.state === 'failed') &&
+          Date.parse(session.updatedAt) <= cutoff
+        ) {
+          this.testSessions.delete(session.id);
+          this.testEvents.delete(session.id);
+          this.testTokenHashes.delete(session.id);
+          deleted += 1;
+        }
+      }
+      return deleted;
+    }
+    const response = await this.pool.query(
+      "DELETE FROM sessions WHERE state IN ('completed', 'failed') AND updated_at < now() - make_interval(days => $1::int)",
+      [retentionDays],
+    );
+    return response.rowCount ?? 0;
   }
 
   private testSession(sessionId: string): Session {

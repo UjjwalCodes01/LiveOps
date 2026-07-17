@@ -7,18 +7,20 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "migrate": "node -r dotenv/config scripts/migrate.cjs dotenv_config_path=.env.production",
+    "migrate": "node -r dotenv/config scripts/migrate.cjs dotenv_config_path=.env",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "npm run migrate && node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings=0",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:aws-integration": "RUN_AWS_INTEGRATION_TESTS=true dotenv_config_path=.env node -r dotenv/config ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand test/aws-lifecycle.e2e-spec.ts"
   },
   "dependencies": {
     "@aws-sdk/client-elastic-load-balancing-v2": "^3.1015.0",

@@ -21,9 +21,7 @@
       "Action": [
         "ec2:RunInstances",
         "elasticloadbalancing:CreateLoadBalancer",
-        "elasticloadbalancing:CreateTargetGroup",
-        "elasticloadbalancing:CreateListener",
-        "elasticloadbalancing:RegisterTargets"
+        "elasticloadbalancing:CreateTargetGroup"
       ],
       "Resource": "*",
       "Condition": {

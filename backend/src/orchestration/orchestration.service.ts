@@ -55,7 +55,13 @@ export class OrchestrationService {
       const state = states[phase];
       if (state.starting !== state.completed)
         await this.transition(sessionId, state.starting);
-      await this.executor.run({ sessionId, phase, name: action });
+      try {
+        await this.executor.run({ sessionId, phase, name: action });
+      } catch (error) {
+        if (TRANSITIONS[state.starting].includes('failed'))
+          await this.sessions.transition(sessionId, 'failed');
+        throw error;
+      }
       return state.starting === state.completed
         ? this.sessions.get(sessionId)
         : this.sessions.transition(sessionId, state.completed);

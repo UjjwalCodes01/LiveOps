@@ -21,6 +21,7 @@ export interface ApplicationConfiguration {
   awsTargetPort: number;
   awsTargetHealthPath: string;
   sessionTtlMinutes: number;
+  sessionRetentionDays: number;
   awsResourceTtlMinutes: number;
   databaseUrl?: string;
   apiKeys: string[];
@@ -31,7 +32,7 @@ export const configuration = registerAs(
   (): ApplicationConfiguration => ({
     environment: (process.env.NODE_ENV ??
       'development') as ApplicationConfiguration['environment'],
-    port: Number.parseInt(process.env.PORT ?? '3000', 10),
+    port: Number.parseInt(process.env.PORT ?? '4000', 10),
     host: process.env.HOST ?? '127.0.0.1',
     trustProxy: Number.parseInt(process.env.TRUST_PROXY ?? '0', 10),
     openAiApiKey: process.env.OPENAI_API_KEY,
@@ -62,6 +63,10 @@ export const configuration = registerAs(
     awsTargetHealthPath: process.env.AWS_TARGET_HEALTH_PATH ?? '/',
     sessionTtlMinutes: Number.parseInt(
       process.env.SESSION_TTL_MINUTES ?? '20',
+      10,
+    ),
+    sessionRetentionDays: Number.parseInt(
+      process.env.SESSION_RETENTION_DAYS ?? '14',
       10,
     ),
     awsResourceTtlMinutes: Number.parseInt(
