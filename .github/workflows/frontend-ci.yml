@@ -1,0 +1,30 @@
+name: frontend-ci
+
+# No test step: the frontend currently has no test framework installed
+# (no Jest/Vitest/Playwright/RTL) — build (which includes Next's type
+# check) and lint are the only real gates that exist today. Don't add a
+# fake test step; add real tests first if that's wanted.
+on:
+  push:
+    branches: [main]
+    paths: ['frontend/**', '.github/workflows/frontend-ci.yml']
+  pull_request:
+    paths: ['frontend/**', '.github/workflows/frontend-ci.yml']
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  build-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint

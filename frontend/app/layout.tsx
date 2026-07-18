@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { NetworkBackground } from "@/components/effects/NetworkBackground";
 import "./globals.css";
@@ -40,8 +41,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <NetworkBackground />
-        {children}
+        {/* reducedMotion="user" makes every motion.* component in the app
+            automatically honor the OS-level prefers-reduced-motion setting
+            (transform/layout animations snap to their end state instead of
+            animating) — one place instead of gating each animation by hand. */}
+        <MotionConfig reducedMotion="user">
+          <NetworkBackground />
+          {children}
+        </MotionConfig>
         <Toaster
           theme="dark"
           position="bottom-right"

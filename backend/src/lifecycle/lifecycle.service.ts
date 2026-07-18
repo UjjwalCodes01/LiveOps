@@ -39,14 +39,26 @@ export class LifecycleService {
   private async cleanupExpiredAwsResources(
     settings: ApplicationConfiguration,
   ): Promise<void> {
-    const deleted = await this.executor.cleanupExpiredResources(
+    const candidates = await this.executor.discoverExpiredAwsSessions(
       settings.awsResourceTtlMinutes,
     );
-    if (!deleted.length) return;
+    if (!candidates.length) return;
+    // Age-based discovery is blind to whether a session is actively
+    // running fix/diagnose right now — never tear resources down out from
+    // under an in-progress operation. Anything skipped here just gets
+    // caught on a later run once its lock clears.
+    const safeToClean =
+      await this.sessions.excludeSessionsWithActiveOperation(candidates);
+    const skipped = candidates.length - safeToClean.length;
+    if (skipped)
+      this.logger.warn(
+        `Skipped AWS cleanup for ${skipped} session(s) still mid-operation; will retry next sweep.`,
+      );
+    if (!safeToClean.length) return;
     this.logger.warn(
-      `Deleted ${deleted.length} expired Build. Break. Fix. load balancers.`,
+      `Cleaning up AWS resources for ${safeToClean.length} session(s) past the ${settings.awsResourceTtlMinutes}-minute resource TTL.`,
     );
-    for (const sessionId of deleted) {
+    for (const sessionId of safeToClean) {
       // Best-effort: this sweep is keyed off AWS resource age, not session
       // state, so the session row may already be gone (e.g. retention
       // deletion) by the time we try to narrate it.
@@ -54,11 +66,38 @@ export class LifecycleService {
         .emit({
           sessionId,
           phase: 'build',
-          type: 'action_completed',
+          type: 'action_started',
           action: 'cleanup_expired_resources',
-          explanation: `AWS resources tagged for this session exceeded the ${settings.awsResourceTtlMinutes}-minute resource TTL and were removed.`,
+          explanation: `AWS resources tagged for this session exceeded the ${settings.awsResourceTtlMinutes}-minute resource TTL and are being removed.`,
         })
         .catch(() => undefined);
+      try {
+        await this.executor.cleanupSession(sessionId);
+        await this.events
+          .emit({
+            sessionId,
+            phase: 'build',
+            type: 'action_completed',
+            action: 'cleanup_expired_resources',
+            explanation: `AWS resources tagged for this session exceeded the ${settings.awsResourceTtlMinutes}-minute resource TTL and were removed.`,
+          })
+          .catch(() => undefined);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown cleanup failure';
+        this.logger.error(
+          `Failed to clean up expired AWS resources for session ${sessionId}: ${message}`,
+        );
+        await this.events
+          .emit({
+            sessionId,
+            phase: 'build',
+            type: 'action_failed',
+            action: 'cleanup_expired_resources',
+            explanation: `Failed to clean up AWS resources past the resource TTL: ${message}`,
+          })
+          .catch(() => undefined);
+      }
     }
   }
 

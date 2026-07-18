@@ -60,7 +60,11 @@ export const configuration = registerAs(
     awsAmiId: process.env.AWS_EC2_AMI_ID,
     awsInstanceType: process.env.AWS_EC2_INSTANCE_TYPE ?? 't3.micro',
     awsTargetPort: Number.parseInt(process.env.AWS_TARGET_PORT ?? '80', 10),
-    awsTargetHealthPath: process.env.AWS_TARGET_HEALTH_PATH ?? '/',
+    // Matches .env.example's documented default. A bare '/' used to be the
+    // default here, which only "worked" as a health check by an accident
+    // of the boot script's HTTP server auto-listing a directory with no
+    // index — a real path is deterministic instead of implementation-defined.
+    awsTargetHealthPath: process.env.AWS_TARGET_HEALTH_PATH ?? '/health',
     sessionTtlMinutes: Number.parseInt(
       process.env.SESSION_TTL_MINUTES ?? '20',
       10,

@@ -87,11 +87,14 @@ export function NetworkBackground() {
         ctx.arc(node.x, node.y, 1.6, 0, Math.PI * 2);
         ctx.fill();
       }
-      frame = window.requestAnimationFrame(draw);
+      // draw() reschedules itself regardless of how it was first invoked —
+      // the reduced-motion decision has to live here, not just at the call
+      // site, or the very first frame re-enters the loop anyway.
+      if (!reduceMotion) frame = window.requestAnimationFrame(draw);
     }
 
-    if (!reduceMotion) frame = window.requestAnimationFrame(draw);
-    else draw(); // draw one static frame, no animation loop
+    if (reduceMotion) draw(); // one static frame, no animation loop
+    else frame = window.requestAnimationFrame(draw);
 
     window.addEventListener('resize', resize);
     return () => {

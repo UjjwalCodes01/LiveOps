@@ -92,6 +92,21 @@ $ npm run migrate
 
 The runner serializes concurrent deployments with a PostgreSQL advisory lock and records completed SQL files in `schema_migrations`.
 
+### Local Postgres (optional)
+
+Don't want to spin up Supabase for local development? `docker-compose.yml`
+provides a plain local Postgres whose credentials match `.env.example`'s
+sample `DATABASE_URL` exactly, so copying that file works with no edits:
+
+```bash
+$ docker compose up -d
+$ cp .env.example .env   # DATABASE_URL already points at the container
+$ npm run migrate
+```
+
+It only provisions an empty database — schema always comes from
+`npm run migrate`, never from container init.
+
 ## Compile and run the project
 
 ```bash
@@ -129,7 +144,7 @@ Per `AGENT.md`, the target deployment shape is ECS Fargate or a single EC2
 instance for the NestJS backend, with the frontend deployed separately
 (Vercel/Amplify). There is no managed one-command deploy for this app — it
 needs a real Postgres instance and a sandboxed AWS account, both outside
-Nest's control. The steps:
+Nest's control. Common steps regardless of which compute option you pick:
 
 1. Provision Postgres (e.g. Supabase, RDS) and set `DATABASE_URL`.
 2. Create the dedicated sandbox AWS account/VPC described in `AGENT.md` §6.3,
@@ -138,24 +153,45 @@ Nest's control. The steps:
 3. Run `infra/create-budget-alarm.sh` against that account so cost overruns
    page you independently of whether the app is healthy.
 4. Set every variable in `.env.example` in your deployment platform's
-   secret/config store (never bake `.env` into an image).
-5. Build and run:
-   ```bash
-   npm ci
-   npm run build
-   npm run start:prod   # runs migrations, then node dist/main
-   ```
-   `start:prod` runs `npm run migrate` first — make sure the deploying
-   principal's `DATABASE_URL` has DDL privileges.
-6. Point your load balancer's health check at `GET /api/health/ready`
+   secret/config store (never bake `.env` into an image or commit it).
+5. Point your load balancer's health check at `GET /api/health/ready`
    (verifies the database connection), and liveness at `GET /api/health`.
-7. Schedule `scripts/sweep-expired-resources.cjs` independently of the app
+6. Schedule `scripts/sweep-expired-resources.cjs` independently of the app
    (`.github/workflows/sweep.yml` is a ready-made hourly GitHub Actions
    version) so orphaned AWS resources still get cleaned up if the app itself
    is down.
-8. CI (`.github/workflows/backend-ci.yml`) runs build, lint, unit, and e2e
+7. CI (`.github/workflows/backend-ci.yml`) runs build, lint, unit, and e2e
    tests on every push/PR touching `backend/`; there is no CD step wired up
-   — deploying is a manual, deliberate action per the steps above.
+   — deploying is a manual, deliberate action per the steps below.
+
+### Option A: container (ECS Fargate or any container platform)
+
+`Dockerfile` is a multi-stage build (deps → compile → production-only
+runtime, non-root user, `HEALTHCHECK` against `/api/health`) — `.dockerignore`
+keeps `.env`/`node_modules`/`.git` out of the image.
+
+```bash
+docker build -t build-break-fix-backend .
+docker run --rm -p 4000:4000 --env-file .env build-break-fix-backend
+```
+
+The container's `CMD` runs `npm run start:prod`, which runs `npm run migrate`
+first — `scripts/migrate.cjs`'s Postgres advisory lock makes this safe to run
+on every container start, including multiple replicas starting concurrently.
+Push the built image to ECR and point an ECS Fargate task/service at it,
+injecting `.env.example`'s variables via task-definition secrets.
+
+### Option B: a single EC2 instance (no Docker)
+
+`infra/build-break-fix-backend.service` is a systemd unit — the app itself
+previously had no process supervision at all, unlike the demo EC2 targets it
+provisions, which get their own systemd unit from
+`AwsAdapter.healthCheckUserData()`. See the comment block at the top of that
+file for the exact setup steps (create a dedicated `bbf` user, deploy
+`dist/`+`migrations/`+`scripts/`+production `node_modules` to
+`/opt/build-break-fix`, drop a real `.env` there, install the unit, enable
+it). `ExecStartPre` runs migrations before every start/restart; `Restart=on-failure`
+gives it the same auto-restart behavior Docker/ECS provide for free.
 
 None of this has been exercised against a live AWS/Postgres account from
 this environment — validate steps 1–3 yourself before treating a deployment

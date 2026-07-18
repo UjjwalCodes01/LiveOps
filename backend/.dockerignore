@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.git
+.github
+
+# Never bake real secrets into an image layer.
+.env
+.env.*
+!.env.example
+
+*.log
+npm-debug.log*
+.DS_Store

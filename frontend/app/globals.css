@@ -160,6 +160,24 @@ h3 {
   color: #05060a;
 }
 
+/* Motion-library components are covered by <MotionConfig reducedMotion="user">
+   in app/layout.tsx — this covers the plain-CSS animations that config can't
+   reach (ripple, skeleton shimmer, Tailwind's animate-ping/animate-bounce).
+   Unlayered, so it wins over Tailwind's utility layer without !important. */
+@media (prefers-reduced-motion: reduce) {
+  .ripple {
+    animation: none;
+    opacity: 0;
+  }
+  .skeleton::after {
+    animation: none;
+  }
+  .animate-ping,
+  .animate-bounce {
+    animation: none;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

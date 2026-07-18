@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   createHash,
@@ -83,7 +88,7 @@ export class SessionService implements OnModuleDestroy {
   ): Promise<T> {
     if (!this.pool) {
       if (this.testLocks.has(sessionId))
-        throw new Error(
+        throw new ConflictException(
           `Session ${sessionId} already has an active operation.`,
         );
       this.testLocks.add(sessionId);
@@ -102,7 +107,9 @@ export class SessionService implements OnModuleDestroy {
       [sessionId, operation],
     );
     if (!result.rowCount)
-      throw new Error(`Session ${sessionId} already has an active operation.`);
+      throw new ConflictException(
+        `Session ${sessionId} already has an active operation.`,
+      );
     try {
       return await callback();
     } finally {
@@ -300,6 +307,29 @@ export class SessionService implements OnModuleDestroy {
       id: row.id,
       phase: PHASE_BY_STATE[row.previous_state],
     }));
+  }
+
+  // Given a list of candidate session IDs (e.g. discovered by AWS-resource
+  // age, independent of session state), returns only the ones that are NOT
+  // currently mid-operation — same freshness window as withOperationLock's
+  // own stale-lock sweep. Callers must skip AWS teardown for anything
+  // filtered out here, or a long-running fix/diagnose can have its
+  // resources deleted out from under it by an unrelated age-based sweep.
+  async excludeSessionsWithActiveOperation(
+    sessionIds: string[],
+  ): Promise<string[]> {
+    if (!sessionIds.length) return [];
+    if (!this.pool) return sessionIds.filter((id) => !this.testLocks.has(id));
+    const response = await this.pool.query<{ id: string }>(
+      `SELECT candidate.id FROM unnest($1::uuid[]) AS candidate(id)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM session_operations so
+         WHERE so.session_id = candidate.id
+           AND so.locked_at >= now() - make_interval(mins => $2::int)
+       )`,
+      [sessionIds, OPERATION_LOCK_STALE_MINUTES],
+    );
+    return response.rows.map((row) => row.id);
   }
 
   // Hard-deletes sessions (and, via ON DELETE CASCADE, their events) once

@@ -85,7 +85,14 @@ export class AwsAdapter {
     await this.deleteLoadBalancerAndWait(loadBalancerArn);
   }
 
-  async cleanupExpiredLoadBalancers(maxAgeMinutes: number): Promise<string[]> {
+  // Pure discovery — deliberately does NOT tear anything down itself.
+  // Whether a discovered session is actually safe to clean up depends on
+  // session_operations (a Postgres concept this AWS-only adapter has no
+  // access to), so that decision belongs to the caller — see
+  // LifecycleService.cleanupExpiredAwsResources, which filters this list
+  // against active operation locks before calling cleanupSession() on
+  // whatever survives.
+  async discoverExpiredSessions(maxAgeMinutes: number): Promise<string[]> {
     if (!this.settings.awsEnabled) return [];
     await this.ensureSandboxAccount();
     const cutoff = Date.now() - maxAgeMinutes * 60_000;
@@ -167,12 +174,8 @@ export class AwsAdapter {
     }
     // Snapshot only after every discovery path (instances, target groups,
     // load balancers) has had a chance to add to the set — taking it any
-    // earlier silently drops ALB-only expirations from the returned list,
-    // even though cleanupSession() below still tears them down correctly.
-    const deleted = [...expiredSessionIds];
-    for (const sessionId of expiredSessionIds)
-      await this.cleanupSession(sessionId);
-    return deleted;
+    // earlier silently drops ALB-only expirations from the returned list.
+    return [...expiredSessionIds];
   }
 
   async cleanupSession(sessionId: string): Promise<void> {
@@ -327,6 +330,52 @@ export class AwsAdapter {
       throw new ServiceUnavailableException(
         'AWS execution is disabled. Set AWS_ENABLED=true only in the dedicated demo account.',
       );
+  }
+
+  // EC2 launches never carry any startup instructions of their own — this
+  // is the only bootstrap a target instance gets. It has to make the
+  // configured AMI answer the target group's HTTP health check
+  // (AWS_TARGET_HEALTH_PATH on AWS_TARGET_PORT), or waitUntilTargetInService
+  // in provision() below just times out after 5 minutes with a stock AMI.
+  // Assumes an Amazon Linux 2023 (or comparably systemd + python3) base
+  // image, which is what the setup docs recommend for AWS_EC2_AMI_ID.
+  private healthCheckUserData(): string {
+    // Must resolve to exactly the same path CreateTargetGroupCommand's
+    // HealthCheckPath checks below (this.settings.awsTargetHealthPath,
+    // unmodified) — any independent fallback here (there used to be one:
+    // defaulting to the literal string 'health' regardless of what was
+    // actually configured) can silently diverge from what the ALB is
+    // really requesting. A trailing slash also used to break this outright:
+    // `echo ok > ".../health/"` fails against a path ending in `/`, and
+    // `set -e` aborts the whole boot script, so every target would fail
+    // its health check and the build would time out.
+    const relativePath = this.settings.awsTargetHealthPath
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
+    const path = relativePath === '' ? 'index.html' : relativePath;
+    const port = this.settings.awsTargetPort;
+    const script = `#!/bin/bash
+set -e
+mkdir -p "/var/www/$(dirname "${path}")"
+echo ok > "/var/www/${path}"
+cat <<'UNIT' > /etc/systemd/system/bbf-health.service
+[Unit]
+Description=Build.Break.Fix health check server
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www
+ExecStart=/usr/bin/python3 -m http.server ${port}
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now bbf-health.service
+`;
+    return Buffer.from(script).toString('base64');
   }
 
   // The AWS SDK already retries throttling internally, but silently — the
@@ -485,6 +534,7 @@ export class AwsAdapter {
                   MaxCount: 1,
                   SubnetId: awsVpcSubnets[index % awsVpcSubnets.length],
                   SecurityGroupIds: [awsSecurityGroupId],
+                  UserData: this.healthCheckUserData(),
                   TagSpecifications: [
                     {
                       ResourceType: 'instance',

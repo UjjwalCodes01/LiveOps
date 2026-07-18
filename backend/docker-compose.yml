@@ -1,21 +1,25 @@
-# Provides a clean local Postgres only — schema comes from `npm run migrate`
-# (scripts/migrate.cjs), not container init. Mounting migrations/ into
-# docker-entrypoint-initdb.d used to apply them a second, untracked way on
-# first container start, so `npm run migrate` would then fail trying to
-# CREATE TABLE things that already existed.
+# Optional local Postgres for development without Supabase — see the
+# "Local Postgres" section in README.md. Provides a clean database only;
+# schema comes from `npm run migrate` (scripts/migrate.cjs), not container
+# init. Credentials match backend/.env.example's sample DATABASE_URL
+# exactly, so copying that file verbatim works against this container with
+# no edits. (Mounting migrations/ into docker-entrypoint-initdb.d used to
+# apply them a second, untracked way on first container start, so
+# `npm run migrate` would then fail trying to CREATE TABLE things that
+# already existed — don't reintroduce that mount.)
 services:
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: build_break_fix
-      POSTGRES_USER: bbf
-      POSTGRES_PASSWORD: change-me
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bbf -d build_break_fix"]
+      test: ["CMD-SHELL", "pg_isready -U user -d build_break_fix"]
       interval: 5s
       timeout: 3s
       retries: 20

@@ -53,3 +53,18 @@ export function saveStoredSession(entry: StoredSession): void {
 export function getAccessToken(sessionId: string): string | undefined {
   return readAll().find((s) => s.sessionId === sessionId)?.accessToken;
 }
+
+// The `storage` event only fires in *other* tabs when localStorage changes
+// (same-tab writes already invalidate cachedSnapshot directly above) — so
+// without this, a session created in tab 2 never shows up on tab 1's
+// already-open Progress page until a manual reload. Meant for
+// useSyncExternalStore's `subscribe` argument.
+export function subscribeToSessionHistory(callback: () => void): () => void {
+  function handleStorage(event: StorageEvent): void {
+    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    cachedSnapshot = null;
+    callback();
+  }
+  window.addEventListener('storage', handleStorage);
+  return () => window.removeEventListener('storage', handleStorage);
+}

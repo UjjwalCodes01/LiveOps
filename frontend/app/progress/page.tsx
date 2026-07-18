@@ -10,7 +10,11 @@ import { GlassButton } from '@/components/glass/GlassButton';
 import { GlassPanel } from '@/components/glass/GlassPanel';
 import { Skeleton } from '@/components/glass/Skeleton';
 import { ApiError, getSession } from '@/lib/api';
-import { listStoredSessions, type StoredSession } from '@/lib/session-history';
+import {
+  listStoredSessions,
+  subscribeToSessionHistory,
+  type StoredSession,
+} from '@/lib/session-history';
 import type { Session, SessionState } from '@/lib/types';
 
 interface SessionRow {
@@ -21,10 +25,6 @@ interface SessionRow {
 
 const EMPTY_SESSIONS: StoredSession[] = [];
 const EMPTY_SESSIONS_ROWS: SessionRow[] = [];
-
-function noopSubscribe(): () => void {
-  return () => undefined;
-}
 
 const PHASE_BY_STATE: Record<SessionState, string> = {
   created: 'build',
@@ -40,7 +40,11 @@ const PHASE_BY_STATE: Record<SessionState, string> = {
 export default function ProgressPage() {
   // Synchronous, SSR-safe read of this browser's session list — see
   // listStoredSessions' snapshot caching, required for useSyncExternalStore.
-  const stored = useSyncExternalStore(noopSubscribe, listStoredSessions, () => EMPTY_SESSIONS);
+  const stored = useSyncExternalStore(
+    subscribeToSessionHistory,
+    listStoredSessions,
+    () => EMPTY_SESSIONS,
+  );
   const [rows, setRows] = useState<SessionRow[] | null>(null);
 
   useEffect(() => {

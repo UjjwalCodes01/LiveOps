@@ -1,0 +1,38 @@
+# systemd unit for running the backend directly on an EC2 instance (the
+# non-Docker deployment path) — the app itself previously had no process
+# supervision at all, unlike the demo EC2 targets it provisions, which get
+# a systemd unit from AwsAdapter.healthCheckUserData().
+#
+# Setup (run once on the instance):
+#   sudo useradd --system --home /opt/build-break-fix --shell /usr/sbin/nologin bbf
+#   sudo mkdir -p /opt/build-break-fix
+#   # deploy the built app (dist/, migrations/, scripts/, package.json,
+#   # package-lock.json, node_modules from `npm ci --omit=dev`) into
+#   # /opt/build-break-fix, and a real .env (chmod 600, owned by bbf) at
+#   # /opt/build-break-fix/.env
+#   sudo chown -R bbf:bbf /opt/build-break-fix
+#   sudo cp build-break-fix-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now build-break-fix-backend
+#
+# node's absolute path varies by install method (nvm, distro package,
+# etc.) — confirm with `which node` on the target instance and adjust
+# ExecStartPre/ExecStart below if it isn't /usr/bin/node.
+[Unit]
+Description=Build. Break. Fix. backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/build-break-fix
+EnvironmentFile=/opt/build-break-fix/.env
+ExecStartPre=/usr/bin/node -r dotenv/config /opt/build-break-fix/scripts/migrate.cjs dotenv_config_path=/opt/build-break-fix/.env
+ExecStart=/usr/bin/node /opt/build-break-fix/dist/main.js
+Restart=on-failure
+RestartSec=5
+User=bbf
+Group=bbf
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

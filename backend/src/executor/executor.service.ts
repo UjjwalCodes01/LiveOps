@@ -70,8 +70,9 @@ export class ExecutorService {
     }
   }
 
-  async cleanupExpiredResources(maxAgeMinutes: number): Promise<string[]> {
-    return this.aws.cleanupExpiredLoadBalancers(maxAgeMinutes);
+  // Discovery only — does not tear anything down. See AwsAdapter.discoverExpiredSessions.
+  async discoverExpiredAwsSessions(maxAgeMinutes: number): Promise<string[]> {
+    return this.aws.discoverExpiredSessions(maxAgeMinutes);
   }
 
   async cleanupSession(sessionId: string): Promise<void> {

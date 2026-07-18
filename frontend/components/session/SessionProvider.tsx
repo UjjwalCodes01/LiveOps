@@ -37,8 +37,22 @@ function celebrate(): void {
   const colors = ['#0ca30c', '#818cf8', '#fab219'];
   const end = Date.now() + 800;
   (function frame() {
-    confetti({ particleCount: 3, angle: 60, spread: 60, origin: { x: 0 }, colors });
-    confetti({ particleCount: 3, angle: 120, spread: 60, origin: { x: 1 }, colors });
+    confetti({
+      particleCount: 3,
+      angle: 60,
+      spread: 60,
+      origin: { x: 0 },
+      colors,
+      disableForReducedMotion: true,
+    });
+    confetti({
+      particleCount: 3,
+      angle: 120,
+      spread: 60,
+      origin: { x: 1 },
+      colors,
+      disableForReducedMotion: true,
+    });
     if (Date.now() < end) requestAnimationFrame(frame);
   })();
 }
@@ -93,17 +107,55 @@ export function SessionProvider({
 
   useEffect(() => {
     let cancelled = false;
+    // Bumped on every getSession() call this effect instance makes; a
+    // response only gets applied if it's still the most recently
+    // *initiated* one when it resolves. Without this, an earlier request
+    // resolving after a later one (real network jitter, not exotic —
+    // action_completed/action_failed fire 7+ times during a build, each
+    // triggering a refresh) can regress the displayed state to stale data.
+    let fetchSeq = 0;
 
-    getSession(sessionId, accessToken)
-      .then((current) => {
-        if (!cancelled) setSession(current);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setSessionError(
-          error instanceof ApiError ? error.message : 'This session could not be loaded.',
-        );
-      });
+    // This component instance is reused across client-side navigation
+    // between two different sessions (e.g. Progress page -> "Open" on a
+    // different session, no full reload) — sessionId/accessToken change
+    // but nothing unmounts. Without resetting here, the new session's
+    // command feed would start out mixed with the previous session's
+    // events, and a session that happens to already be 'completed' when
+    // switched to would inherit celebratedRef=true and never fire confetti.
+    // This is a reset-on-identity-change tied to rebuilding the socket
+    // subscription below, not derived state — same justification as the
+    // other react-hooks/set-state-in-effect disables in this codebase.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEvents([]);
+    setSession(null);
+    setSessionError(null);
+    setConnection('connecting');
+    lastTimestampRef.current = undefined;
+    celebratedRef.current = false;
+
+    function refreshSession(options: { reportErrors: boolean }) {
+      const seq = ++fetchSeq;
+      getSession(sessionId, accessToken)
+        .then((current) => {
+          if (cancelled || seq !== fetchSeq) return;
+          setSession(current);
+          if (current.state === 'completed' && !celebratedRef.current) {
+            celebratedRef.current = true;
+            celebrate();
+            toast.success('Fixed! The system recovered.', {
+              description: 'Build → break → diagnose → fix, all real, all live.',
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled || seq !== fetchSeq || !options.reportErrors) return;
+          setSessionError(
+            error instanceof ApiError ? error.message : 'This session could not be loaded.',
+          );
+        });
+    }
+
+    refreshSession({ reportErrors: true });
 
     const socket = createEventsSocket();
 
@@ -125,20 +177,7 @@ export function SessionProvider({
     socket.on('session:event', (event: SessionEvent) => {
       appendEvents([event]);
       notify(event);
-      if (STATE_CHANGING_EVENTS.has(event.type))
-        getSession(sessionId, accessToken)
-          .then((current) => {
-            if (cancelled) return;
-            setSession(current);
-            if (current.state === 'completed' && !celebratedRef.current) {
-              celebratedRef.current = true;
-              celebrate();
-              toast.success('Fixed! The system recovered.', {
-                description: 'Build → break → diagnose → fix, all real, all live.',
-              });
-            }
-          })
-          .catch(() => undefined);
+      if (STATE_CHANGING_EVENTS.has(event.type)) refreshSession({ reportErrors: false });
     });
 
     socket.connect();

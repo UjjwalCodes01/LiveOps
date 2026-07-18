@@ -16,6 +16,25 @@ const TRANSITIONS: Record<Session['state'], Session['state'][]> = {
   failed: [],
 };
 
+// Only build and fix have a distinct "in progress" state to show while the
+// executor runs (building, fixing) — explore/break/diagnose go straight
+// from their precondition state to their completed state, since
+// Session['state'] has no "breaking"/"investigating" equivalent. A prior
+// version of this map gave break/diagnose a `starting` equal to their
+// `completed` value specifically so the old "skip if equal" logic would
+// no-op — which also skipped the completed-state write entirely, so
+// break()/diagnose() never persisted 'broken'/'diagnosing' at all.
+const PHASE_STATES: Record<
+  Phase,
+  { inProgress?: Session['state']; completed: Session['state'] }
+> = {
+  build: { inProgress: 'building', completed: 'ready' },
+  explore: { completed: 'ready' },
+  break: { completed: 'broken' },
+  diagnose: { completed: 'diagnosing' },
+  fix: { inProgress: 'fixing', completed: 'completed' },
+};
+
 @Injectable()
 export class OrchestrationService {
   constructor(
@@ -41,30 +60,22 @@ export class OrchestrationService {
     phase: Phase,
     action: ActionName,
   ): Promise<Session> {
-    const states: Record<
-      Phase,
-      { starting: Session['state']; completed: Session['state'] }
-    > = {
-      build: { starting: 'building', completed: 'ready' },
-      explore: { starting: 'ready', completed: 'ready' },
-      break: { starting: 'broken', completed: 'broken' },
-      diagnose: { starting: 'diagnosing', completed: 'diagnosing' },
-      fix: { starting: 'fixing', completed: 'completed' },
-    };
+    const state = PHASE_STATES[phase];
     return this.sessions.withOperationLock(sessionId, phase, async () => {
-      const state = states[phase];
-      if (state.starting !== state.completed)
-        await this.transition(sessionId, state.starting);
+      if (state.inProgress) await this.transition(sessionId, state.inProgress);
       try {
         await this.executor.run({ sessionId, phase, name: action });
       } catch (error) {
-        if (TRANSITIONS[state.starting].includes('failed'))
+        // build/fix know their in-progress state already; explore/break/
+        // diagnose have none, so read the (unchanged) precondition state
+        // back to check whether it has a 'failed' edge.
+        const failingState =
+          state.inProgress ?? (await this.sessions.get(sessionId)).state;
+        if (TRANSITIONS[failingState].includes('failed'))
           await this.sessions.transition(sessionId, 'failed');
         throw error;
       }
-      return state.starting === state.completed
-        ? this.sessions.get(sessionId)
-        : this.sessions.transition(sessionId, state.completed);
+      return this.sessions.transition(sessionId, state.completed);
     });
   }
 

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(command -v aws)",
+      "Bash(aws --version)",
+      "Bash(aws sts *)",
+      "Bash(aws ssm *)",
+      "Bash(grep -E '\\\\.\\(ts|json|yml|yaml|sh|cjs|md|example\\)$')",
+      "Bash(cd /home/ujwal/Desktop/LiveOps/backend && find . -iname \"iam-policy.json\" -not -path \"*/node_modules/*\" 2>/dev/null; find .. -iname \"iam-policy.json\" -not -path \"*/node_modules/*\" 2>/dev/null *)",
+      "Read(//home/ujwal/Desktop/**)",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}

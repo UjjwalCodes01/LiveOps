@@ -37,12 +37,19 @@ export function DiagramNode({ data }: NodeProps & { data: DiagramNodeData }) {
   const [pulsing, setPulsing] = useState(false);
 
   useEffect(() => {
-    if (prevStatus.current !== data.status) {
-      prevStatus.current = data.status;
-      setPulsing(true);
-      const timer = window.setTimeout(() => setPulsing(false), 900);
-      return () => window.clearTimeout(timer);
-    }
+    if (prevStatus.current === data.status) return;
+    prevStatus.current = data.status;
+    // The color/border swap below already communicates the status change;
+    // the pulse is pure decoration on top of that, so skip it outright
+    // under reduced motion rather than trying to override an inline style.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // This is a "detect a prop change, kick off a timer" effect, not the
+    // derived-state anti-pattern react-hooks/set-state-in-effect targets —
+    // same justification as the equivalent disable in command-feed/TypedText.tsx.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPulsing(true);
+    const timer = window.setTimeout(() => setPulsing(false), 900);
+    return () => window.clearTimeout(timer);
   }, [data.status]);
 
   return (

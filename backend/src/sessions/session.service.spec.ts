@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { SessionService } from './session.service';
 
 describe('SessionService', () => {
@@ -86,6 +86,42 @@ describe('SessionService', () => {
     await expect(service.get(midBuild.session.id)).resolves.toMatchObject({
       state: 'created',
     });
+  });
+
+  it('rejects a concurrent operation with a ConflictException, not a plain Error', async () => {
+    const service = new SessionService({
+      getOrThrow: () => ({ environment: 'test' }),
+    } as never);
+    const { session } = await service.create();
+    await service.withOperationLock(session.id, 'build', async () => {
+      await expect(
+        service.withOperationLock(session.id, 'build', () =>
+          Promise.resolve(undefined),
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  it('excludeSessionsWithActiveOperation filters out only locked sessions', async () => {
+    const service = new SessionService({
+      getOrThrow: () => ({ environment: 'test' }),
+    } as never);
+    const locked = await service.create();
+    const free = await service.create();
+
+    await service.withOperationLock(locked.session.id, 'fix', async () => {
+      const survivors = await service.excludeSessionsWithActiveOperation([
+        locked.session.id,
+        free.session.id,
+      ]);
+      expect(survivors).toEqual([free.session.id]);
+    });
+
+    // Once the lock is released, the same session is no longer excluded.
+    const afterRelease = await service.excludeSessionsWithActiveOperation([
+      locked.session.id,
+    ]);
+    expect(afterRelease).toEqual([locked.session.id]);
   });
 
   it('deletes terminal sessions and their events once past the retention window', async () => {
