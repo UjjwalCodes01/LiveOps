@@ -1,26 +1,77 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #05060a;
+  --foreground: #f4f5f7;
+
+  /* Glassmorphism surface tokens */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-bg-strong: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --glass-blur: 16px;
+
+  /* Semantic status colors — matches AGENT.md's green/yellow/red node
+     states for healthy / degraded / failed. Validated (not eyeballed) via
+     the dataviz skill's validate_palette.js against this app's actual dark
+     surface (#05060a): contrast >= 3:1 and CVD separation both pass.
+     --status-info is a separate "in progress" activity accent, not a
+     health/outcome state, so it's deliberately outside the reserved
+     good/warning/critical status set. */
+  --status-healthy: #0ca30c;
+  --status-warning: #fab219;
+  --status-error: #d03b3b;
+  --status-info: #818cf8;
+
+  /* Backdrop gradient */
+  --backdrop-gradient: radial-gradient(
+      circle at 15% 0%,
+      rgba(99, 102, 241, 0.22),
+      transparent 45%
+    ),
+    radial-gradient(circle at 85% 20%, rgba(56, 189, 248, 0.16), transparent 45%),
+    radial-gradient(circle at 50% 100%, rgba(168, 85, 247, 0.14), transparent 55%),
+    var(--background);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-status-healthy: var(--status-healthy);
+  --color-status-warning: var(--status-warning);
+  --color-status-error: var(--status-error);
+  --color-status-info: var(--status-info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background: var(--backdrop-gradient);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+@layer components {
+  .glass-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    border-radius: 1rem;
+  }
+  .glass-panel-strong {
+    background: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    border-radius: 1rem;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+::selection {
+  background: var(--status-info);
+  color: #05060a;
 }
