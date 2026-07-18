@@ -1,3 +1,8 @@
+# Provides a clean local Postgres only — schema comes from `npm run migrate`
+# (scripts/migrate.cjs), not container init. Mounting migrations/ into
+# docker-entrypoint-initdb.d used to apply them a second, untracked way on
+# first container start, so `npm run migrate` would then fail trying to
+# CREATE TABLE things that already existed.
 services:
   postgres:
     image: postgres:17-alpine
@@ -9,7 +14,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bbf -d build_break_fix"]
       interval: 5s
