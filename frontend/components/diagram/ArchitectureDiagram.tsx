@@ -4,6 +4,7 @@ import '@xyflow/react/dist/style.css';
 import { Background, Controls, ReactFlow, type Edge, type Node } from '@xyflow/react';
 import { useMemo } from 'react';
 import type { SessionEvent } from '@/lib/types';
+import { DiagramNode, type DiagramNodeData, type DiagramNodeStatus } from './DiagramNode';
 
 interface ProvisionResult {
   loadBalancerArn?: string;
@@ -18,7 +19,7 @@ interface TargetHealthEntry {
   reason?: string;
 }
 
-type NodeStatus = 'pending' | 'healthy' | 'warning' | 'error';
+type NodeStatus = DiagramNodeStatus;
 
 export interface ResourceDetails {
   id: string;
@@ -29,26 +30,7 @@ export interface ResourceDetails {
   neighbors: string[];
 }
 
-const STATUS_STYLE: Record<NodeStatus, { background: string; border: string; color: string }> = {
-  pending: { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)', color: '#fff' },
-  healthy: { background: 'rgba(52,211,153,0.16)', border: '1px solid rgba(52,211,153,0.6)', color: '#fff' },
-  warning: { background: 'rgba(251,191,36,0.16)', border: '1px solid rgba(251,191,36,0.6)', color: '#fff' },
-  error: { background: 'rgba(251,113,133,0.18)', border: '1px solid rgba(251,113,133,0.65)', color: '#fff' },
-};
-
-function nodeStyle(status: NodeStatus, selected: boolean) {
-  return {
-    ...STATUS_STYLE[status],
-    borderRadius: 12,
-    padding: 10,
-    fontSize: 12,
-    fontFamily: 'var(--font-mono)',
-    backdropFilter: 'blur(8px)',
-    outline: selected ? '2px solid rgba(255,255,255,0.8)' : 'none',
-    outlineOffset: 2,
-    cursor: 'pointer',
-  };
-}
+const NODE_TYPES = { resource: DiagramNode };
 
 function findLatestResult(
   events: SessionEvent[],
@@ -70,20 +52,24 @@ export function ArchitectureDiagram({
   onNodeSelect?: (details: ResourceDetails) => void;
   selectedNodeId?: string;
 }) {
-  const { nodes, edges, built, details } = useMemo(() => buildGraph(events, selectedNodeId), [events, selectedNodeId]);
+  const { nodes, edges, built, details } = useMemo(
+    () => buildGraph(events, selectedNodeId),
+    [events, selectedNodeId],
+  );
 
   if (!built)
     return (
-      <div className="flex h-full min-h-[320px] items-center justify-center rounded-xl border border-dashed border-white/15 text-sm text-white/40">
+      <div className="flex h-full min-h-80 items-center justify-center rounded-xl border border-dashed border-white/15 text-sm text-white/40">
         Nothing built yet — run the build phase to see the live architecture.
       </div>
     );
 
   return (
-    <div className="h-full min-h-[320px] overflow-hidden rounded-xl">
+    <div className="h-full min-h-80 overflow-hidden rounded-xl">
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        nodeTypes={NODE_TYPES}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         nodesDraggable={false}
@@ -175,25 +161,35 @@ function buildGraph(
     });
   }
 
-  const columnX = { lb: 0, tg: 260, instances: 520 };
+  const columnX = { lb: 0, tg: 260, instances: 540 };
+  function nodeData(
+    kind: DiagramNodeData['kind'],
+    title: string,
+    subtitle: string | undefined,
+    status: NodeStatus,
+    id: string,
+  ): DiagramNodeData {
+    return { kind, title, subtitle, status, selected: selectedNodeId === id };
+  }
+
   const nodes: Node[] = [
     {
       id: 'lb',
+      type: 'resource',
       position: { x: columnX.lb, y: instanceIds.length * 40 },
-      data: { label: `Application Load Balancer\n${provisioned.dnsName ?? ''}` },
-      style: nodeStyle('healthy', selectedNodeId === 'lb'),
+      data: nodeData('load_balancer', 'Application Load Balancer', provisioned.dnsName, 'healthy', 'lb'),
     },
     {
       id: 'tg',
+      type: 'resource',
       position: { x: columnX.tg, y: instanceIds.length * 40 },
-      data: { label: 'Target Group' },
-      style: nodeStyle('healthy', selectedNodeId === 'tg'),
+      data: nodeData('target_group', 'Target Group', undefined, 'healthy', 'tg'),
     },
     ...instanceIds.map((id, index) => ({
       id,
+      type: 'resource',
       position: { x: columnX.instances, y: index * 90 },
-      data: { label: `EC2 · ${id}` },
-      style: nodeStyle(healthByInstance.get(id) ?? 'pending', selectedNodeId === id),
+      data: nodeData('instance', 'EC2 target', id.slice(-10), healthByInstance.get(id) ?? 'pending', id),
     })),
   ];
 
@@ -207,7 +203,7 @@ function buildGraph(
       style: {
         stroke:
           healthByInstance.get(id) === 'error'
-            ? 'rgba(251,113,133,0.7)'
+            ? 'rgba(208,59,59,0.7)'
             : 'rgba(255,255,255,0.3)',
       },
     })),

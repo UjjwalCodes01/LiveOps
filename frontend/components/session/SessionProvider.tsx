@@ -1,5 +1,6 @@
 'use client';
 
+import confetti from 'canvas-confetti';
 import {
   createContext,
   useCallback,
@@ -9,10 +10,38 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { toast } from 'sonner';
 import { ApiError, getSession, runAgentPhase } from '@/lib/api';
+import { friendlyAction, friendlyExplanation } from '@/lib/humanize';
 import { createEventsSocket, joinSession } from '@/lib/socket';
 import type { Phase, Session, SessionEvent } from '@/lib/types';
 import type { ConnectionState } from '@/components/glass/ConnectionStatus';
+
+const TOAST_EVENT_TYPES = new Set(['action_completed', 'action_failed', 'narration']);
+// Retry-attempt noise ("agent temporarily unavailable, retrying...") is
+// already visible, less intrusively, in the command feed — a full toast
+// per retry is more clutter than signal for a student watching.
+const RETRY_PATTERN = /^Agent temporarily unavailable; retrying/;
+
+function notify(event: SessionEvent): void {
+  if (!TOAST_EVENT_TYPES.has(event.type)) return;
+  if (event.type === 'action_failed' && RETRY_PATTERN.test(event.explanation)) return;
+  const label = friendlyAction(event.action) ?? event.phase;
+  const description = friendlyExplanation(event.explanation).text;
+  if (event.type === 'action_failed') toast.error(label, { description });
+  else if (event.type === 'action_completed') toast.success(label, { description });
+  else toast(label, { description });
+}
+
+function celebrate(): void {
+  const colors = ['#0ca30c', '#818cf8', '#fab219'];
+  const end = Date.now() + 800;
+  (function frame() {
+    confetti({ particleCount: 3, angle: 60, spread: 60, origin: { x: 0 }, colors });
+    confetti({ particleCount: 3, angle: 120, spread: 60, origin: { x: 1 }, colors });
+    if (Date.now() < end) requestAnimationFrame(frame);
+  })();
+}
 
 interface SessionContextValue {
   session: Session | null;
@@ -50,6 +79,7 @@ export function SessionProvider({
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const lastTimestampRef = useRef<string | undefined>(undefined);
+  const celebratedRef = useRef(false);
 
   const appendEvents = useCallback((incoming: SessionEvent[]) => {
     if (!incoming.length) return;
@@ -94,10 +124,19 @@ export function SessionProvider({
     socket.on('connect_error', () => setConnection('error'));
     socket.on('session:event', (event: SessionEvent) => {
       appendEvents([event]);
+      notify(event);
       if (STATE_CHANGING_EVENTS.has(event.type))
         getSession(sessionId, accessToken)
           .then((current) => {
-            if (!cancelled) setSession(current);
+            if (cancelled) return;
+            setSession(current);
+            if (current.state === 'completed' && !celebratedRef.current) {
+              celebratedRef.current = true;
+              celebrate();
+              toast.success('Fixed! The system recovered.', {
+                description: 'Build → break → diagnose → fix, all real, all live.',
+              });
+            }
           })
           .catch(() => undefined);
     });

@@ -1,3 +1,11 @@
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Circle,
+  Loader2,
+  XCircle,
+  type LucideIcon,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { SessionState } from '@/lib/types';
 
@@ -9,6 +17,14 @@ const TONE_CLASSES: Record<Tone, string> = {
   error: 'bg-status-error/15 text-status-error border-status-error/40',
   info: 'bg-status-info/15 text-status-info border-status-info/40',
   neutral: 'bg-white/8 text-white/70 border-white/20',
+};
+
+const TONE_ICON: Record<Tone, LucideIcon> = {
+  healthy: CheckCircle2,
+  warning: AlertTriangle,
+  error: XCircle,
+  info: Loader2,
+  neutral: Circle,
 };
 
 // Maps every real Session['state'] to a visual tone — kept exhaustive via
@@ -30,11 +46,12 @@ export function StateBadge({ state }: { state: SessionState }) {
 }
 
 export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: ReactNode }) {
+  const Icon = TONE_ICON[tone];
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium capitalize backdrop-blur-md ${TONE_CLASSES[tone]}`}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <Icon className={`h-3 w-3 ${tone === 'info' ? 'animate-spin' : ''}`} strokeWidth={2.5} />
       {children}
     </span>
   );

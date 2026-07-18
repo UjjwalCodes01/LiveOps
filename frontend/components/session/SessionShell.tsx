@@ -1,5 +1,7 @@
 'use client';
 
+import { AlertTriangle, SearchX } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore, type ReactNode } from 'react';
@@ -31,7 +33,10 @@ function SessionHeader({ sessionId, currentPhase }: { sessionId: string; current
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Link href="/" className="text-sm font-semibold tracking-tight text-white/90">
+          <Link
+            href="/"
+            className="font-display text-sm font-semibold tracking-tight text-white/90"
+          >
             Build. Break. Fix.
           </Link>
           {session && <StateBadge state={session.state} />}
@@ -70,6 +75,7 @@ export function SessionShell({
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center gap-4 px-6 text-center">
         <GlassPanel className="p-8">
+          <SearchX className="mx-auto mb-3 h-8 w-8 text-white/30" />
           <h1 className="text-lg font-semibold text-white">Session not found in this browser</h1>
           <p className="mt-2 text-sm text-white/60">
             This session&rsquo;s access token only ever lived in the browser that created it, and
@@ -87,7 +93,18 @@ export function SessionShell({
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <SessionHeader sessionId={sessionId} currentPhase={currentPhase} />
         <SessionErrorBanner />
-        <main className="flex-1">{children}</main>
+        <AnimatePresence mode="wait">
+          <motion.main
+            key={currentPhase}
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -16 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="flex-1"
+          >
+            {children}
+          </motion.main>
+        </AnimatePresence>
       </div>
     </SessionProvider>
   );
@@ -97,7 +114,11 @@ function SessionErrorBanner() {
   const { sessionError } = useSession();
   if (!sessionError) return null;
   return (
-    <GlassPanel className="border-status-error/40 p-4 text-sm text-status-error">
+    <GlassPanel
+      spotlight={false}
+      className="flex items-start gap-2 border-status-error/40 p-4 text-sm text-status-error"
+    >
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       {sessionError}
     </GlassPanel>
   );
