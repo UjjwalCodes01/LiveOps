@@ -10,7 +10,8 @@
       "Bash(grep -E '\\\\.\\(ts|json|yml|yaml|sh|cjs|md|example\\)$')",
       "Bash(cd /home/ujwal/Desktop/LiveOps/backend && find . -iname \"iam-policy.json\" -not -path \"*/node_modules/*\" 2>/dev/null; find .. -iname \"iam-policy.json\" -not -path \"*/node_modules/*\" 2>/dev/null *)",
       "Read(//home/ujwal/Desktop/**)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(git -C /home/ujwal/Desktop/LiveOps ls-files)"
     ]
   }
 }

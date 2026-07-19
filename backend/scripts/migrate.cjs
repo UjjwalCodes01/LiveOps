@@ -7,7 +7,13 @@ const advisoryLockId = 817240191;
 
 async function migrate() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required to run migrations.');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  // Mirrors SessionService's Pool ssl config (src/config/configuration.ts,
+  // src/sessions/session.service.ts) — managed Postgres (Render, Supabase,
+  // RDS) needs this, or the connection fails outright before any SQL runs.
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+  });
   await client.connect();
   try {
     await client.query('SELECT pg_advisory_lock($1)', [advisoryLockId]);

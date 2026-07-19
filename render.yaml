@@ -1,0 +1,93 @@
+# Render Blueprint — deploys the NestJS backend (backend/Dockerfile) plus a
+# managed Postgres database in one shot. Connect this repo at
+# https://dashboard.render.com/blueprints and Render picks this file up
+# automatically.
+#
+# Plan tiers: `starter` below avoids two real gotchas on the `free` tier —
+# free web services spin down after 15 minutes idle (kills open Socket.IO
+# connections and pauses the @Cron lifecycle sweep until the next request
+# wakes it back up), and the free Postgres plan is deleted after 90 days.
+# Free is fine for a one-off demo; use starter (or above) for anything
+# meant to stay up and keep its data.
+#
+# After the blueprint deploys, set the envVars marked `sync: false` below
+# in the Render dashboard (Environment tab) — they're either secret or
+# depend on values (like the Vercel frontend URL) that don't exist until
+# the frontend has its own deployment.
+databases:
+  - name: build-break-fix-db
+    plan: starter
+    region: singapore # match to wherever your AWS sandbox / users are
+
+services:
+  - type: web
+    name: build-break-fix-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      # Render injects PORT itself — do not set it here; the app already
+      # reads process.env.PORT (see backend/src/config/configuration.ts).
+      - key: TRUST_PROXY
+        value: "1" # Render terminates TLS and proxies through one hop
+      - key: DATABASE_URL
+        fromDatabase:
+          name: build-break-fix-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: API_KEYS
+        sync: false # comma-separated x-api-key values the frontend must send
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6
+      - key: OPENAI_TIMEOUT_MS
+        value: "30000"
+      - key: OPENAI_MAX_RETRIES
+        value: "2"
+      - key: CORS_ORIGINS
+        sync: false # e.g. https://your-app.vercel.app,https://*.vercel.app
+      - key: SESSION_TTL_MINUTES
+        value: "20"
+      - key: SESSION_RETENTION_DAYS
+        value: "14"
+      # --- AWS sandbox (build/break/diagnose/fix's real infra provisioning) ---
+      # Leave AWS_ENABLED=false to run without touching real AWS resources.
+      # Render is not AWS, so there's no instance role to fall back on —
+      # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are required (not just for
+      # local testing) if you turn this on. See backend/AGENT.md §6.3 and
+      # backend/infra/README.md before enabling it against a real account.
+      - key: AWS_ENABLED
+        value: "false"
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_ACCOUNT_ID
+        sync: false
+      - key: AWS_VPC_ID
+        sync: false
+      - key: AWS_VPC_SUBNET_IDS
+        sync: false
+      - key: AWS_SECURITY_GROUP_ID
+        sync: false
+      - key: AWS_EC2_AMI_ID
+        sync: false
+      - key: AWS_EC2_INSTANCE_TYPE
+        value: t3.micro
+      - key: AWS_TARGET_PORT
+        value: "80"
+      - key: AWS_TARGET_HEALTH_PATH
+        value: /health
+      - key: AWS_RESOURCE_TTL_MINUTES
+        value: "20"
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false

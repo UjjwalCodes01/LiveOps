@@ -24,6 +24,7 @@ export interface ApplicationConfiguration {
   sessionRetentionDays: number;
   awsResourceTtlMinutes: number;
   databaseUrl?: string;
+  databaseSsl: boolean;
   apiKeys: string[];
 }
 
@@ -33,7 +34,12 @@ export const configuration = registerAs(
     environment: (process.env.NODE_ENV ??
       'development') as ApplicationConfiguration['environment'],
     port: Number.parseInt(process.env.PORT ?? '4000', 10),
-    host: process.env.HOST ?? '127.0.0.1',
+    // 0.0.0.0, not 127.0.0.1 — PaaS platforms (Render, ECS, etc.) proxy
+    // traffic to the container from outside it, and a loopback-only bind
+    // makes the app unreachable even though it "works" from inside the
+    // container itself. Harmless for local dev (0.0.0.0 still accepts
+    // localhost connections).
+    host: process.env.HOST ?? '0.0.0.0',
     trustProxy: Number.parseInt(process.env.TRUST_PROXY ?? '0', 10),
     openAiApiKey: process.env.OPENAI_API_KEY,
     openAiModel: process.env.OPENAI_MODEL ?? 'gpt-5.6',
@@ -78,6 +84,15 @@ export const configuration = registerAs(
       10,
     ),
     databaseUrl: process.env.DATABASE_URL,
+    // Explicit, not auto-detected from NODE_ENV or the connection string —
+    // predictable beats magic. Managed Postgres (Render, Supabase, RDS)
+    // needs this set true; a local/self-hosted Postgres usually doesn't
+    // have TLS configured at all, so this defaults to false.
+    // rejectUnauthorized:false because these providers commonly present a
+    // cert chain that doesn't validate against Node's default trust store
+    // — the connection itself is still encrypted, this only skips CA
+    // validation, which is the standard pattern for these providers.
+    databaseSsl: process.env.DATABASE_SSL === 'true',
     apiKeys: (process.env.API_KEYS ?? '').split(',').filter(Boolean),
   }),
 );

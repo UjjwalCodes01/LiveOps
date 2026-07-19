@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { ServerOptions } from 'socket.io';
 import { ApplicationConfiguration } from '../config/configuration';
+import { createOriginMatcher } from '../config/cors';
 
 // @WebSocketGateway's decorator options evaluate at class-definition time
 // (import time), before NestFactory.create() ever runs ConfigModule's
@@ -20,9 +21,16 @@ export class ConfiguredSocketIoAdapter extends IoAdapter {
     const config = this.app
       .get(ConfigService)
       .getOrThrow<ApplicationConfiguration>('app');
+    const isAllowedOrigin = createOriginMatcher(config.corsOrigins);
     return super.createIOServer(port, {
       ...options,
-      cors: { origin: config.corsOrigins, credentials: true },
+      cors: {
+        origin: (
+          origin: string | undefined,
+          callback: (error: Error | null, allow?: boolean) => void,
+        ) => callback(null, isAllowedOrigin(origin)),
+        credentials: true,
+      },
     });
   }
 }

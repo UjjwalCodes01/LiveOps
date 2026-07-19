@@ -164,6 +164,50 @@ Nest's control. Common steps regardless of which compute option you pick:
    tests on every push/PR touching `backend/`; there is no CD step wired up
    — deploying is a manual, deliberate action per the steps below.
 
+### Render (recommended — one-click via `render.yaml`)
+
+`render.yaml` at the repo root is a
+[Render Blueprint](https://render.com/docs/blueprint-spec): it provisions the
+backend as a Docker web service (from `backend/Dockerfile`) plus a managed
+Postgres database, wired together automatically.
+
+1. Push this repo to GitHub/GitLab, then in the Render dashboard: **New** →
+   **Blueprint**, and point it at the repo. Render reads `render.yaml` and
+   shows you the plan.
+2. After the first deploy, open the backend service's **Environment** tab
+   and fill in every variable the blueprint marked `sync: false` — at
+   minimum `API_KEYS` (generate a real random value; the frontend must send
+   it back as `x-api-key`) and `OPENAI_API_KEY`. Leave `AWS_ENABLED=false`
+   unless you've set up the sandbox AWS account per `AGENT.md` §6.3, in
+   which case fill in the `AWS_*` variables too.
+3. Once the frontend has a Vercel URL (see `frontend/README.md`), set
+   `CORS_ORIGINS` to it — e.g.
+   `https://your-app.vercel.app,https://*.vercel.app` (the wildcard covers
+   Vercel's per-branch preview deployments, which each get their own
+   generated subdomain).
+4. `DATABASE_URL` and `DATABASE_SSL=true` are already wired up by the
+   blueprint (`fromDatabase` pulls the connection string from the Postgres
+   service Render just created for you). `HOST=0.0.0.0` and `TRUST_PROXY=1`
+   are also pre-set — both matter: Render proxies traffic to the container
+   from outside it, so a loopback bind or an untrusted-proxy `req.ip` would
+   silently break connectivity or rate limiting.
+5. Render's health check is set to `GET /api/health` (see `healthCheckPath`
+   in `render.yaml`); `npm run migrate` runs automatically on every deploy
+   via the Dockerfile's `CMD` (`npm run start:prod`).
+
+Don't want to hand-edit `render.yaml`? A manual **New → Web Service** →
+point at `backend/Dockerfile` works too — just replicate the env vars from
+`render.yaml` and `.env.example` by hand, and add a separate managed or
+external (e.g. Supabase) Postgres instance yourself.
+
+One caveat regardless of how you deploy: `LifecycleService`'s `@Cron`
+sweep and Socket.IO's live event stream both assume exactly one
+long-running backend process. If you ever scale the Render service beyond
+one instance, `withOperationLock`/`excludeSessionsWithActiveOperation`
+still prevent data corruption (they're DB-level, not in-memory), but the
+cleanup cron will run redundantly on every instance — harmless, just
+slightly wasteful AWS API calls.
+
 ### Option A: container (ECS Fargate or any container platform)
 
 `Dockerfile` is a multi-stage build (deps → compile → production-only

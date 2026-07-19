@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import compression from 'compression';
 import helmet from 'helmet';
 import { ApplicationConfiguration } from './config/configuration';
+import { createOriginMatcher } from './config/cors';
 import { ConfiguredSocketIoAdapter } from './events/socket-io.adapter';
 
 export function configureApplication(app: INestApplication): void {
@@ -17,8 +18,12 @@ export function configureApplication(app: INestApplication): void {
   expressServer.set('trust proxy', config.trustProxy);
   app.use(helmet());
   app.use(compression());
+  const isAllowedOrigin = createOriginMatcher(config.corsOrigins);
   app.enableCors({
-    origin: config.corsOrigins,
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => callback(null, isAllowedOrigin(origin)),
     credentials: true,
     methods: ['GET', 'POST'],
   });

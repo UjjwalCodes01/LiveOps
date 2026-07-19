@@ -68,6 +68,7 @@ export class SessionService implements OnModuleDestroy {
         max: 20,
         idleTimeoutMillis: 30_000,
         connectionTimeoutMillis: 5_000,
+        ssl: settings.databaseSsl ? { rejectUnauthorized: false } : undefined,
       });
     else if (settings.environment !== 'test')
       throw new Error('DATABASE_URL is required outside the test environment.');
