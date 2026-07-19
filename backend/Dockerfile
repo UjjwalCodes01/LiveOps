@@ -31,7 +31,12 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -q -O- http://127.0.0.1:4000/api/health || exit 1
 
-# start:prod runs `npm run migrate` first — schema_migrations + the
-# Postgres advisory lock in scripts/migrate.cjs already make this safe to
-# run on every container start, including concurrent replicas.
-CMD ["npm", "run", "start:prod"]
+# Run migrations, then `exec` Node so it replaces the shell and becomes PID 1
+# — the long-running server must receive SIGTERM directly, NOT wrapped in
+# `npm run`. Under `npm`, a normal shutdown signal from the platform surfaces
+# as a red "npm error ... signal SIGTERM" and Node's graceful-shutdown hooks
+# (app.enableShutdownHooks → pool cleanup) may not fire. `exec` makes the
+# shutdown clean and silent. Migrations stay here: schema_migrations + the
+# advisory lock in scripts/migrate.cjs make them safe to run on every start,
+# including concurrent replicas.
+CMD ["sh", "-c", "npm run migrate && exec node dist/main"]
