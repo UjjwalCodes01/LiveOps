@@ -25,9 +25,25 @@ const STATE_BY_PHASE: Record<Phase, string[]> = {
   fix: ['diagnosing'],
 };
 
+// Clean, phase-appropriate narration for the deterministic no-LLM path
+// (OPENAI_ENABLED=false). Unlike the retry-exhaustion fallback, this is a
+// normal, first-class narration — it never surfaces as an "AI unavailable"
+// failure, because nothing failed: the agent just isn't using an LLM.
+const SCRIPTED_NARRATION: Record<Phase, string> = {
+  build:
+    'Provisioning a load balancer with three EC2 targets so incoming traffic can be spread across them.',
+  explore:
+    'Reading the live state of the load balancer and its targets straight from AWS.',
+  break:
+    'Deregistering one healthy target to simulate a server failure and test resilience.',
+  diagnose:
+    "Querying each target's real health status from AWS to locate the fault.",
+  fix: 'Re-registering the failed target and waiting for it to pass its health check.',
+};
+
 @Injectable()
 export class AgentService {
-  private readonly client: OpenAI;
+  private readonly client?: OpenAI;
   private readonly settings: ApplicationConfiguration;
   constructor(
     private readonly config: ConfigService,
@@ -36,13 +52,19 @@ export class AgentService {
     private readonly events: EventsService,
   ) {
     this.settings = config.getOrThrow<ApplicationConfiguration>('app');
-    if (!this.settings.openAiApiKey)
-      throw new Error('OPENAI_API_KEY is required for agent orchestration.');
-    this.client = new OpenAI({
-      apiKey: this.settings.openAiApiKey,
-      timeout: this.settings.openAiTimeoutMs,
-      maxRetries: 0,
-    });
+    // Only require and wire up OpenAI when it's actually enabled — the
+    // no-LLM path (OPENAI_ENABLED=false) needs no key at all.
+    if (this.settings.openAiEnabled) {
+      if (!this.settings.openAiApiKey)
+        throw new Error(
+          'OPENAI_API_KEY is required unless OPENAI_ENABLED=false.',
+        );
+      this.client = new OpenAI({
+        apiKey: this.settings.openAiApiKey,
+        timeout: this.settings.openAiTimeoutMs,
+        maxRetries: 0,
+      });
+    }
   }
 
   async execute(
@@ -76,6 +98,13 @@ export class AgentService {
     phase: Phase,
     state: string,
   ): Promise<AgentDecision> {
+    // Deterministic path: no OpenAI call, no retries, no failure events —
+    // just the verified action for this phase with clean narration.
+    if (!this.settings.openAiEnabled)
+      return {
+        action: this.fallbackAction(phase),
+        explanation: SCRIPTED_NARRATION[phase],
+      };
     const allowed = ALLOWED_ACTIONS_BY_PHASE[phase];
     for (
       let attempt = 0;
@@ -123,6 +152,11 @@ export class AgentService {
     state: string,
     allowed: readonly ActionName[],
   ): Promise<AgentDecision> {
+    // Unreachable when openAiEnabled is false (decide() short-circuits), but
+    // this keeps the optional client type-safe and fails loudly if that
+    // invariant is ever broken.
+    if (!this.client)
+      throw new ServiceUnavailableException('OpenAI client is not configured.');
     const completion = await this.client.chat.completions.create({
       model: this.settings.openAiModel,
       temperature: 0,

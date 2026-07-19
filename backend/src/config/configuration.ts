@@ -6,6 +6,11 @@ export interface ApplicationConfiguration {
   host: string;
   trustProxy: number;
   openAiApiKey?: string;
+  // When false, the agent skips OpenAI entirely and drives each phase with
+  // its deterministic verified action — no API calls, no credits needed, no
+  // "AI unavailable" retry noise. Lets the full build/break/fix loop run on
+  // real AWS without an OpenAI budget.
+  openAiEnabled: boolean;
   openAiModel: string;
   openAiTimeoutMs: number;
   openAiMaxRetries: number;
@@ -42,6 +47,9 @@ export const configuration = registerAs(
     host: process.env.HOST ?? '0.0.0.0',
     trustProxy: Number.parseInt(process.env.TRUST_PROXY ?? '0', 10),
     openAiApiKey: process.env.OPENAI_API_KEY,
+    // Default on; set OPENAI_ENABLED=false to run the deterministic,
+    // no-OpenAI agent path (e.g. a demo with no OpenAI credits).
+    openAiEnabled: process.env.OPENAI_ENABLED !== 'false',
     openAiModel: process.env.OPENAI_MODEL ?? 'gpt-5.6',
     openAiTimeoutMs: Number.parseInt(
       process.env.OPENAI_TIMEOUT_MS ?? '30000',

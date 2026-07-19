@@ -40,13 +40,18 @@ export function configureApplication(app: INestApplication): void {
 function validateProductionConfiguration(
   config: ApplicationConfiguration,
 ): void {
+  // OpenAI config is only required when the LLM path is actually enabled;
+  // OPENAI_ENABLED=false runs the deterministic agent with no key at all.
+  const openAiInvalid =
+    config.openAiEnabled &&
+    (!config.openAiApiKey ||
+      config.openAiTimeoutMs < 1 ||
+      config.openAiMaxRetries < 0);
   if (
     config.environment === 'production' &&
     (!config.databaseUrl ||
       !config.apiKeys.length ||
-      !config.openAiApiKey ||
-      config.openAiTimeoutMs < 1 ||
-      config.openAiMaxRetries < 0 ||
+      openAiInvalid ||
       config.sessionTtlMinutes < 1 ||
       config.awsResourceTtlMinutes < 1 ||
       !config.awsEnabled ||
