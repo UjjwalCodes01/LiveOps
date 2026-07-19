@@ -210,16 +210,30 @@ export class AwsAdapter {
         );
         const found = subnets.Subnets ?? [];
         const wrongVpc = found.filter((subnet) => subnet.VpcId !== s.awsVpcId);
-        const ok = found.length === s.awsVpcSubnets.length && !wrongVpc.length;
+        // An ALB requires its subnets to span at least two distinct
+        // Availability Zones — two subnets in the same AZ make
+        // CreateLoadBalancer fail ("cannot be attached to multiple subnets
+        // in the same Availability Zone"), which otherwise only surfaces
+        // mid-build after EC2 targets and the target group already exist.
+        const azs = new Set(
+          found.map((subnet) => subnet.AvailabilityZone).filter(Boolean),
+        );
+        const sameAz = found.length >= 2 && azs.size < 2;
+        const ok =
+          found.length === s.awsVpcSubnets.length &&
+          !wrongVpc.length &&
+          !sameAz;
         checks.push({
           key: 'subnets',
-          label: 'Subnets valid',
+          label: 'Subnets valid (exist, in VPC, span ≥2 AZs)',
           status: ok ? 'ok' : 'failed',
           detail: ok
-            ? `${found.length} subnets found, all in ${s.awsVpcId}.`
+            ? `${found.length} subnets found in ${s.awsVpcId}, across ${azs.size} AZs (${[...azs].join(', ')}).`
             : wrongVpc.length
               ? `Subnet(s) not in the configured VPC: ${wrongVpc.map((subnet) => subnet.SubnetId).join(', ')}.`
-              : `Expected ${s.awsVpcSubnets.length} subnets, found ${found.length}.`,
+              : sameAz
+                ? `All subnets are in the same Availability Zone (${[...azs].join(', ')}). An ALB needs subnets in ≥2 different AZs — swap one for a subnet in another AZ.`
+                : `Expected ${s.awsVpcSubnets.length} subnets, found ${found.length}.`,
         });
       } catch (error) {
         checks.push({

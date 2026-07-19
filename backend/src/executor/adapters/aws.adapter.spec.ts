@@ -63,8 +63,16 @@ describe('AwsAdapter.verifySetup', () => {
           case 'DescribeSubnetsCommand':
             return {
               Subnets: [
-                { SubnetId: 'subnet-1', VpcId: 'vpc-abc' },
-                { SubnetId: 'subnet-2', VpcId: 'vpc-abc' },
+                {
+                  SubnetId: 'subnet-1',
+                  VpcId: 'vpc-abc',
+                  AvailabilityZone: 'us-east-1a',
+                },
+                {
+                  SubnetId: 'subnet-2',
+                  VpcId: 'vpc-abc',
+                  AvailabilityZone: 'us-east-1b',
+                },
               ],
             };
           case 'DescribeSecurityGroupsCommand':
@@ -125,8 +133,16 @@ describe('AwsAdapter.verifySetup', () => {
         if (name === 'DescribeSubnetsCommand')
           return {
             Subnets: [
-              { SubnetId: 'subnet-1', VpcId: 'vpc-abc' },
-              { SubnetId: 'subnet-2', VpcId: 'vpc-OTHER' },
+              {
+                SubnetId: 'subnet-1',
+                VpcId: 'vpc-abc',
+                AvailabilityZone: 'us-east-1a',
+              },
+              {
+                SubnetId: 'subnet-2',
+                VpcId: 'vpc-OTHER',
+                AvailabilityZone: 'us-east-1b',
+              },
             ],
           };
         if (name === 'DescribeSecurityGroupsCommand')
@@ -145,6 +161,43 @@ describe('AwsAdapter.verifySetup', () => {
     expect(report.ready).toBe(false);
   });
 
+  it('catches two subnets that are in the same Availability Zone', async () => {
+    const adapter = makeAdapter(BASE_CONFIG, {
+      sts: () => ({ Account: '123456789012' }),
+      ec2: (name) => {
+        if (name === 'DescribeVpcsCommand')
+          return { Vpcs: [{ VpcId: 'vpc-abc' }] };
+        if (name === 'DescribeSubnetsCommand')
+          return {
+            Subnets: [
+              {
+                SubnetId: 'subnet-1',
+                VpcId: 'vpc-abc',
+                AvailabilityZone: 'us-east-1a',
+              },
+              {
+                SubnetId: 'subnet-2',
+                VpcId: 'vpc-abc',
+                AvailabilityZone: 'us-east-1a', // same AZ — ALB will reject
+              },
+            ],
+          };
+        if (name === 'DescribeSecurityGroupsCommand')
+          return { SecurityGroups: [{ GroupId: 'sg-abc', VpcId: 'vpc-abc' }] };
+        if (name === 'DescribeImagesCommand')
+          return { Images: [{ ImageId: 'ami-abc', State: 'available' }] };
+        return {};
+      },
+    });
+
+    const report = await adapter.verifySetup();
+    const subnets = report.checks.find((check) => check.key === 'subnets');
+
+    expect(subnets?.status).toBe('failed');
+    expect(subnets?.detail).toContain('same Availability Zone');
+    expect(report.ready).toBe(false);
+  });
+
   it('fails the AMI check when the image is not yet available', async () => {
     const adapter = makeAdapter(BASE_CONFIG, {
       sts: () => ({ Account: '123456789012' }),
@@ -154,8 +207,16 @@ describe('AwsAdapter.verifySetup', () => {
         if (name === 'DescribeSubnetsCommand')
           return {
             Subnets: [
-              { SubnetId: 'subnet-1', VpcId: 'vpc-abc' },
-              { SubnetId: 'subnet-2', VpcId: 'vpc-abc' },
+              {
+                SubnetId: 'subnet-1',
+                VpcId: 'vpc-abc',
+                AvailabilityZone: 'us-east-1a',
+              },
+              {
+                SubnetId: 'subnet-2',
+                VpcId: 'vpc-abc',
+                AvailabilityZone: 'us-east-1b',
+              },
             ],
           };
         if (name === 'DescribeSecurityGroupsCommand')
