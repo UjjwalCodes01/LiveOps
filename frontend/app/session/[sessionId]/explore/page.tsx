@@ -5,6 +5,7 @@ import { ArchitectureDiagram, type ResourceDetails } from '@/components/diagram/
 import { GlassPanel } from '@/components/glass/GlassPanel';
 import { Badge } from '@/components/glass/Badge';
 import { LessonPanel } from '@/components/learn/LessonPanel';
+import { LiveEndpoint } from '@/components/session/LiveEndpoint';
 import { PhaseActionPanel } from '@/components/session/PhaseActionPanel';
 import { useSession } from '@/components/session/SessionProvider';
 
@@ -29,13 +30,12 @@ export default function ExplorePage() {
         completedHint="You can keep refreshing any time — this phase has no side effects."
         invalidHint={(state) => `Build the system first (currently "${state}").`}
       />
+      {/* Hero row: the diagram paired with the live node inspector — click a
+          node to inspect its real, current AWS state on the right. */}
       <div className="grid gap-5 lg:grid-cols-5">
-        <div className="flex flex-col gap-5 lg:col-span-3">
-          <GlassPanel className="p-4" delay={0.05}>
-            <ArchitectureDiagram events={events} onNodeSelect={setSelected} selectedNodeId={selected?.id} />
-          </GlassPanel>
-          <LessonPanel phase="explore" />
-        </div>
+        <GlassPanel className="p-4 lg:col-span-3" delay={0.05}>
+          <ArchitectureDiagram events={events} onNodeSelect={setSelected} selectedNodeId={selected?.id} />
+        </GlassPanel>
         <GlassPanel className="p-5 lg:col-span-2" delay={0.1}>
           {selected ? (
             <div className="flex flex-col gap-3">
@@ -62,6 +62,12 @@ export default function ExplorePage() {
             <p className="text-sm text-white/40">Click a node in the diagram to inspect it.</p>
           )}
         </GlassPanel>
+      </div>
+      {/* Learning row: the concept beside the live-endpoint proof, matching
+          the concept-left / detail-right layout of the other phase pages. */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <LessonPanel phase="explore" />
+        <LiveEndpoint />
       </div>
     </div>
   );

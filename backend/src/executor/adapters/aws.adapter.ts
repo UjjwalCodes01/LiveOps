@@ -19,6 +19,7 @@ import {
   DescribeSubnetsCommand,
   DescribeVpcsCommand,
   EC2Client,
+  type IpPermission,
   _InstanceType,
   RunInstancesCommand,
   TerminateInstancesCommand,
@@ -245,7 +246,12 @@ export class AwsAdapter {
       }
     }
 
-    // Security group — exists and is in the configured VPC
+    // Security group — exists, is in the configured VPC, AND admits inbound
+    // traffic on the target port. The ALB health-checks targets on
+    // awsTargetPort; if the SG blocks it, targets never go healthy and every
+    // build stalls at "waiting for health checks" until the 5-minute waiter
+    // times out. It's the single most common silent failure, so catch it
+    // here instead of mid-build.
     if (!credentialsOk || !s.awsSecurityGroupId) {
       checks.push(skipRest('security_group', 'Security group valid'));
     } else {
@@ -256,16 +262,24 @@ export class AwsAdapter {
           }),
         );
         const group = groups.SecurityGroups?.[0];
-        const ok = !!group && group.VpcId === s.awsVpcId;
+        const inVpc = !!group && group.VpcId === s.awsVpcId;
+        const allowsPort =
+          inVpc &&
+          this.securityGroupAllowsTcpPort(
+            group?.IpPermissions,
+            s.awsTargetPort,
+          );
         checks.push({
           key: 'security_group',
-          label: 'Security group valid',
-          status: ok ? 'ok' : 'failed',
-          detail: ok
-            ? `Security group ${s.awsSecurityGroupId} found in ${s.awsVpcId}.`
-            : group
+          label: `Security group valid (in VPC, allows inbound TCP ${s.awsTargetPort})`,
+          status: allowsPort ? 'ok' : 'failed',
+          detail: !group
+            ? `Security group ${s.awsSecurityGroupId} not found.`
+            : !inVpc
               ? `Security group ${s.awsSecurityGroupId} is in VPC ${group.VpcId}, not ${s.awsVpcId}.`
-              : `Security group ${s.awsSecurityGroupId} not found.`,
+              : !allowsPort
+                ? `Security group ${s.awsSecurityGroupId} has no inbound rule allowing TCP ${s.awsTargetPort}. The load balancer health-checks targets on that port, so they would never go healthy — add an inbound rule for TCP ${s.awsTargetPort}.`
+                : `Security group ${s.awsSecurityGroupId} is in ${s.awsVpcId} and admits inbound TCP ${s.awsTargetPort}.`,
         });
       } catch (error) {
         checks.push({
@@ -316,6 +330,34 @@ export class AwsAdapter {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  // Does the security group have an inbound rule that admits TCP traffic on
+  // `port` from at least one source? Handles the "all traffic" (-1) rule and
+  // TCP port ranges, and requires a real source (CIDR, IPv6 range, prefix
+  // list, or referenced SG) so a source-less rule doesn't count as open.
+  private securityGroupAllowsTcpPort(
+    permissions: IpPermission[] | undefined,
+    port: number,
+  ): boolean {
+    for (const permission of permissions ?? []) {
+      const protocol = permission.IpProtocol;
+      if (protocol !== 'tcp' && protocol !== '-1') continue;
+      const portCovered =
+        protocol === '-1' ||
+        (permission.FromPort !== undefined &&
+          permission.ToPort !== undefined &&
+          port >= permission.FromPort &&
+          port <= permission.ToPort);
+      if (!portCovered) continue;
+      const hasSource =
+        (permission.IpRanges?.length ?? 0) > 0 ||
+        (permission.Ipv6Ranges?.length ?? 0) > 0 ||
+        (permission.UserIdGroupPairs?.length ?? 0) > 0 ||
+        (permission.PrefixListIds?.length ?? 0) > 0;
+      if (hasSource) return true;
+    }
+    return false;
   }
 
   async teardown(loadBalancerArn: string): Promise<void> {
@@ -1022,6 +1064,10 @@ systemctl enable --now bbf-health.service
       return {
         loadBalancerArn: loadBalancer.LoadBalancerArn,
         dnsName: loadBalancer.DNSName,
+        // Surfaced so the UI can build the exact public URL of the live
+        // load balancer (http://<dnsName><healthPath>) and let anyone hit
+        // it — proving the built system is real, not a diagram.
+        healthPath: this.settings.awsTargetHealthPath,
         state: loadBalancer.State?.Code,
         targetGroupArn,
         instanceIds,

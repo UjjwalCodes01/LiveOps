@@ -14,6 +14,21 @@ const BASE_CONFIG: Partial<ApplicationConfiguration> = {
   awsTargetHealthPath: '/health',
 };
 
+// A security group in the right VPC that admits inbound TCP 80 (the target
+// port) — the valid shape the pre-flight now requires.
+const SG_WITH_PORT_80 = {
+  GroupId: 'sg-abc',
+  VpcId: 'vpc-abc',
+  IpPermissions: [
+    {
+      IpProtocol: 'tcp',
+      FromPort: 80,
+      ToPort: 80,
+      IpRanges: [{ CidrIp: '0.0.0.0/0' }],
+    },
+  ],
+};
+
 // Build an adapter with its AWS SDK clients replaced by fakes. The clients
 // are constructed in the constructor, so we override the private fields
 // after construction — the constructor only reads awsRegion off config.
@@ -76,9 +91,7 @@ describe('AwsAdapter.verifySetup', () => {
               ],
             };
           case 'DescribeSecurityGroupsCommand':
-            return {
-              SecurityGroups: [{ GroupId: 'sg-abc', VpcId: 'vpc-abc' }],
-            };
+            return { SecurityGroups: [SG_WITH_PORT_80] };
           case 'DescribeImagesCommand':
             return { Images: [{ ImageId: 'ami-abc', State: 'available' }] };
           default:
@@ -146,7 +159,7 @@ describe('AwsAdapter.verifySetup', () => {
             ],
           };
         if (name === 'DescribeSecurityGroupsCommand')
-          return { SecurityGroups: [{ GroupId: 'sg-abc', VpcId: 'vpc-abc' }] };
+          return { SecurityGroups: [SG_WITH_PORT_80] };
         if (name === 'DescribeImagesCommand')
           return { Images: [{ ImageId: 'ami-abc', State: 'available' }] };
         return {};
@@ -183,7 +196,7 @@ describe('AwsAdapter.verifySetup', () => {
             ],
           };
         if (name === 'DescribeSecurityGroupsCommand')
-          return { SecurityGroups: [{ GroupId: 'sg-abc', VpcId: 'vpc-abc' }] };
+          return { SecurityGroups: [SG_WITH_PORT_80] };
         if (name === 'DescribeImagesCommand')
           return { Images: [{ ImageId: 'ami-abc', State: 'available' }] };
         return {};
@@ -220,7 +233,7 @@ describe('AwsAdapter.verifySetup', () => {
             ],
           };
         if (name === 'DescribeSecurityGroupsCommand')
-          return { SecurityGroups: [{ GroupId: 'sg-abc', VpcId: 'vpc-abc' }] };
+          return { SecurityGroups: [SG_WITH_PORT_80] };
         if (name === 'DescribeImagesCommand')
           return { Images: [{ ImageId: 'ami-abc', State: 'pending' }] };
         return {};
@@ -232,5 +245,58 @@ describe('AwsAdapter.verifySetup', () => {
 
     expect(ami?.status).toBe('failed');
     expect(ami?.detail).toContain('pending');
+  });
+
+  it('fails the security group check when inbound TCP 80 is not allowed', async () => {
+    const adapter = makeAdapter(BASE_CONFIG, {
+      sts: () => ({ Account: '123456789012' }),
+      ec2: (name) => {
+        if (name === 'DescribeVpcsCommand')
+          return { Vpcs: [{ VpcId: 'vpc-abc' }] };
+        if (name === 'DescribeSubnetsCommand')
+          return {
+            Subnets: [
+              {
+                SubnetId: 'subnet-1',
+                VpcId: 'vpc-abc',
+                AvailabilityZone: 'us-east-1a',
+              },
+              {
+                SubnetId: 'subnet-2',
+                VpcId: 'vpc-abc',
+                AvailabilityZone: 'us-east-1b',
+              },
+            ],
+          };
+        if (name === 'DescribeSecurityGroupsCommand')
+          // In the VPC, but only opens SSH (22) — not the target port 80.
+          return {
+            SecurityGroups: [
+              {
+                GroupId: 'sg-abc',
+                VpcId: 'vpc-abc',
+                IpPermissions: [
+                  {
+                    IpProtocol: 'tcp',
+                    FromPort: 22,
+                    ToPort: 22,
+                    IpRanges: [{ CidrIp: '0.0.0.0/0' }],
+                  },
+                ],
+              },
+            ],
+          };
+        if (name === 'DescribeImagesCommand')
+          return { Images: [{ ImageId: 'ami-abc', State: 'available' }] };
+        return {};
+      },
+    });
+
+    const report = await adapter.verifySetup();
+    const sg = report.checks.find((check) => check.key === 'security_group');
+
+    expect(sg?.status).toBe('failed');
+    expect(sg?.detail).toContain('TCP 80');
+    expect(report.ready).toBe(false);
   });
 });

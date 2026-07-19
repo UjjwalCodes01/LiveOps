@@ -1,6 +1,7 @@
 'use client';
 
 import { GlassPanel } from '@/components/glass/GlassPanel';
+import { LiveEndpoint } from '@/components/session/LiveEndpoint';
 import { PhaseActionPanel } from '@/components/session/PhaseActionPanel';
 import { PhaseWorkspace } from '@/components/session/PhaseWorkspace';
 import { useSession } from '@/components/session/SessionProvider';
@@ -59,6 +60,7 @@ export default function FixPage() {
         invalidHint={(state) => `Nothing to fix yet (currently "${state}"). Diagnose the failure first.`}
       />
       <PhaseWorkspace phase="fix" emptyFeedHint="Run the fix to watch the system recover." />
+      <LiveEndpoint />
       <RecoverySummary />
     </div>
   );
