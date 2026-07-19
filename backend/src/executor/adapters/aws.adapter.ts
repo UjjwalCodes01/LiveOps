@@ -744,6 +744,28 @@ systemctl enable --now bbf-health.service
       throw new BadRequestException(
         'All configured subnets must belong to the configured sandbox VPC.',
       );
+    // An ALB accepts at most one subnet per Availability Zone. Rather than
+    // pass every configured subnet blindly (which fails CreateLoadBalancer
+    // mid-build if any two share an AZ — "cannot be attached to multiple
+    // subnets in the same Availability Zone"), pick exactly one subnet per
+    // AZ here. This makes provisioning robust to an operator listing extra
+    // or same-AZ subnets. EC2 targets below still spread across every
+    // configured subnet; only the ALB has the one-per-AZ constraint, and
+    // every target's AZ is covered because these span all configured AZs.
+    const subnetByAz = new Map<string, string>();
+    for (const subnet of subnetValidation.Subnets ?? []) {
+      if (
+        subnet.AvailabilityZone &&
+        subnet.SubnetId &&
+        !subnetByAz.has(subnet.AvailabilityZone)
+      )
+        subnetByAz.set(subnet.AvailabilityZone, subnet.SubnetId);
+    }
+    const loadBalancerSubnets = [...subnetByAz.values()];
+    if (loadBalancerSubnets.length < 2)
+      throw new BadRequestException(
+        `An Application Load Balancer needs subnets in at least two Availability Zones, but the configured subnets cover only ${loadBalancerSubnets.length} AZ (${[...subnetByAz.keys()].join(', ') || 'none'}). Add a subnet in a different AZ to AWS_VPC_SUBNET_IDS.`,
+      );
     const suffix = createHash('sha256')
       .update(sessionId)
       .digest('hex')
@@ -870,7 +892,7 @@ systemctl enable --now bbf-health.service
               Type: 'application',
               Scheme: 'internet-facing',
               IpAddressType: 'ipv4',
-              Subnets: awsVpcSubnets,
+              Subnets: loadBalancerSubnets,
               SecurityGroups: [awsSecurityGroupId],
               Tags: [
                 { Key: 'project', Value: 'bbf-demo' },
