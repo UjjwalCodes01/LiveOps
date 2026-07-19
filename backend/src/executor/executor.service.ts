@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { EventsService } from '../events/events.service';
-import { AwsAdapter } from './adapters/aws.adapter';
+import { AwsAdapter, PreflightReport } from './adapters/aws.adapter';
 import { ALLOWED_ACTIONS_BY_PHASE, ExecutorAction } from './actions';
 
 @Injectable()
@@ -73,6 +73,11 @@ export class ExecutorService {
   // Discovery only — does not tear anything down. See AwsAdapter.discoverExpiredSessions.
   async discoverExpiredAwsSessions(maxAgeMinutes: number): Promise<string[]> {
     return this.aws.discoverExpiredSessions(maxAgeMinutes);
+  }
+
+  // Read-only pre-flight — provisions nothing. See AwsAdapter.verifySetup.
+  async verifyAwsSetup(): Promise<PreflightReport> {
+    return this.aws.verifySetup();
   }
 
   async cleanupSession(sessionId: string): Promise<void> {

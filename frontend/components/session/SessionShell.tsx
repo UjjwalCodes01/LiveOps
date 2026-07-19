@@ -11,6 +11,7 @@ import { ConnectionStatus } from '@/components/glass/ConnectionStatus';
 import { PhaseStepper } from '@/components/glass/PhaseStepper';
 import { StateBadge } from '@/components/glass/Badge';
 import { SessionProvider, useSession } from '@/components/session/SessionProvider';
+import { ConceptsLearned } from '@/components/learn/ConceptsLearned';
 import { getAccessToken } from '@/lib/session-history';
 import { PHASES, type Phase } from '@/lib/types';
 
@@ -48,6 +49,7 @@ function SessionHeader({ sessionId, currentPhase }: { sessionId: string; current
         currentPhase={currentPhase}
         sessionState={session?.state ?? 'created'}
       />
+      <ConceptsLearned />
     </div>
   );
 }

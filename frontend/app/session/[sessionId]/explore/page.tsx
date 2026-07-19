@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ArchitectureDiagram, type ResourceDetails } from '@/components/diagram/ArchitectureDiagram';
 import { GlassPanel } from '@/components/glass/GlassPanel';
 import { Badge } from '@/components/glass/Badge';
+import { LessonPanel } from '@/components/learn/LessonPanel';
 import { PhaseActionPanel } from '@/components/session/PhaseActionPanel';
 import { useSession } from '@/components/session/SessionProvider';
 
@@ -29,9 +30,12 @@ export default function ExplorePage() {
         invalidHint={(state) => `Build the system first (currently "${state}").`}
       />
       <div className="grid gap-5 lg:grid-cols-5">
-        <GlassPanel className="p-4 lg:col-span-3" delay={0.05}>
-          <ArchitectureDiagram events={events} onNodeSelect={setSelected} selectedNodeId={selected?.id} />
-        </GlassPanel>
+        <div className="flex flex-col gap-5 lg:col-span-3">
+          <GlassPanel className="p-4" delay={0.05}>
+            <ArchitectureDiagram events={events} onNodeSelect={setSelected} selectedNodeId={selected?.id} />
+          </GlassPanel>
+          <LessonPanel phase="explore" />
+        </div>
         <GlassPanel className="p-5 lg:col-span-2" delay={0.1}>
           {selected ? (
             <div className="flex flex-col gap-3">

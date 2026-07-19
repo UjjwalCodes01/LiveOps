@@ -82,6 +82,26 @@ credentials. For local sandbox testing only, the AWS SDK also accepts
 Both are unauthenticated (`@Public()`), unlike every other route, which
 requires a valid `x-api-key` header.
 
+## Pre-flight AWS check (run this before any live demo)
+
+`GET /api/diagnostics/aws` (x-api-key required — it reveals infra wiring) is
+a read-only pre-flight that provisions nothing and reports whether a live
+build would actually succeed right now: credentials resolve to the
+configured sandbox account, and the VPC, both subnets, the security group,
+and the AMI all exist and are consistent. It turns "the build mysteriously
+timed out in front of judges" into a specific failed check you can fix
+beforehand.
+
+Easiest way to run it:
+
+```bash
+PREFLIGHT_URL=https://your-backend.onrender.com API_KEY=<one of API_KEYS> npm run preflight
+```
+
+It prints a ✓/✗ per check and exits non-zero if anything fails, so it also
+works as a CI/pre-demo gate. Every check is isolated — one failure never
+hides the others.
+
 ## Database migrations
 
 Set `DATABASE_URL` to the Supabase/Postgres connection string, then run this before every deployment:

@@ -1,5 +1,6 @@
 'use client';
 
+import { BuildProgress } from '@/components/session/BuildProgress';
 import { PhaseActionPanel } from '@/components/session/PhaseActionPanel';
 import { PhaseWorkspace } from '@/components/session/PhaseWorkspace';
 
@@ -14,7 +15,11 @@ export default function BuildPage() {
         completedHint="Already built — head to Explore to look around."
         invalidHint={(state) => `Can't build from state "${state}".`}
       />
-      <PhaseWorkspace phase="build" emptyFeedHint="Run the build to see the agent's first move." />
+      <PhaseWorkspace
+        phase="build"
+        emptyFeedHint="Run the build to see the agent's first move."
+        extra={<BuildProgress />}
+      />
     </div>
   );
 }

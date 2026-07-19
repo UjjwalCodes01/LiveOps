@@ -15,6 +15,17 @@ describe('API health and auth contract (e2e)', () => {
   const apiKey = 'e2e-test-api-key';
 
   beforeAll(async () => {
+    // Hermetic by construction: this suite tests the HTTP / auth / health
+    // contract, not persistence, so it must never touch a real database.
+    // Force in-memory mode (SessionService uses maps when there's no
+    // DATABASE_URL) and NODE_ENV=test regardless of whatever ambient
+    // backend/.env happens to hold — otherwise a developer's .env pointing
+    // at a production Postgres (e.g. Supabase) would make these tests try
+    // to connect to it. Setting the vars to a present value stops
+    // @nestjs/config's dotenv load from re-populating them from .env
+    // (dotenv never overrides keys already in process.env).
+    process.env.NODE_ENV = 'test';
+    process.env.DATABASE_URL = '';
     process.env.API_KEYS = apiKey;
     // AgentService requires OPENAI_API_KEY to construct at all (see
     // src/agent/agent.service.ts), even though this suite never exercises

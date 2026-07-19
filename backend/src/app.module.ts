@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ApiKeyGuard } from './common/api-key.guard';
 import { AgentModule } from './agent/agent.module';
+import { DiagnosticsController } from './common/diagnostics.controller';
 import { HealthController } from './common/health.controller';
 import { configuration } from './config/configuration';
 import { EventsModule } from './events/events.module';
@@ -30,7 +31,7 @@ import { LifecycleModule } from './lifecycle/lifecycle.module';
     OrchestrationModule,
     LifecycleModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, DiagnosticsController],
   providers: [
     { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -13,8 +13,11 @@ import {
   RegisterTargetsCommand,
 } from '@aws-sdk/client-elastic-load-balancing-v2';
 import {
+  DescribeImagesCommand,
   DescribeInstancesCommand,
+  DescribeSecurityGroupsCommand,
   DescribeSubnetsCommand,
+  DescribeVpcsCommand,
   EC2Client,
   _InstanceType,
   RunInstancesCommand,
@@ -43,6 +46,22 @@ export type ProgressReporter = (
   explanation: string,
   result?: Record<string, unknown>,
 ) => Promise<void>;
+
+export interface PreflightCheck {
+  // Stable machine key, e.g. 'credentials', 'vpc', 'ami'.
+  key: string;
+  label: string;
+  status: 'ok' | 'failed' | 'skipped';
+  detail: string;
+}
+
+export interface PreflightReport {
+  // True only if every non-skipped check passed — i.e. a live build should
+  // actually succeed against this environment right now.
+  ready: boolean;
+  region: string;
+  checks: PreflightCheck[];
+}
 
 @Injectable()
 export class AwsAdapter {
@@ -77,6 +96,212 @@ export class AwsAdapter {
       case 'restore_target':
         return this.updateTarget(sessionId, true);
     }
+  }
+
+  // Pre-flight: verify, without provisioning anything, that a live build
+  // would actually succeed against this environment right now — creds,
+  // sandbox account, VPC, subnets, security group, and AMI all present and
+  // consistent. This is the single most valuable de-risking step before a
+  // live demo: it turns "the build mysteriously timed out in front of
+  // judges" into "check #4 says subnet-abc isn't in the VPC" up front.
+  // Every check is isolated: one failure is reported, never thrown, so the
+  // report always covers all of them.
+  async verifySetup(): Promise<PreflightReport> {
+    const checks: PreflightCheck[] = [];
+    const s = this.settings;
+
+    checks.push({
+      key: 'enabled',
+      label: 'AWS execution enabled',
+      status: s.awsEnabled ? 'ok' : 'failed',
+      detail: s.awsEnabled
+        ? 'AWS_ENABLED=true — live provisioning is on.'
+        : 'AWS_ENABLED is not true, so live builds are disabled. Set it to true in the demo account.',
+    });
+
+    const missing = [
+      !s.awsAccountId && 'AWS_ACCOUNT_ID',
+      !s.awsVpcId && 'AWS_VPC_ID',
+      s.awsVpcSubnets.length < 2 && 'AWS_VPC_SUBNET_IDS (need ≥2)',
+      !s.awsSecurityGroupId && 'AWS_SECURITY_GROUP_ID',
+      !s.awsAmiId && 'AWS_EC2_AMI_ID',
+    ].filter((value): value is string => typeof value === 'string');
+    checks.push({
+      key: 'config',
+      label: 'Required configuration present',
+      status: missing.length ? 'failed' : 'ok',
+      detail: missing.length
+        ? `Missing/invalid: ${missing.join(', ')}.`
+        : 'All required AWS environment variables are set.',
+    });
+
+    // Credentials + correct sandbox account. If this fails, every AWS call
+    // below would fail the same way, so skip them and say so rather than
+    // emit a wall of identical credential errors.
+    let credentialsOk = false;
+    try {
+      const identity = await this.sts.send(new GetCallerIdentityCommand({}));
+      if (s.awsAccountId && identity.Account !== s.awsAccountId) {
+        checks.push({
+          key: 'credentials',
+          label: 'Credentials & sandbox account',
+          status: 'failed',
+          detail: `Credentials resolve to account ${identity.Account ?? 'unknown'}, not the configured sandbox account ${s.awsAccountId}. Refusing to touch the wrong account.`,
+        });
+      } else {
+        credentialsOk = true;
+        checks.push({
+          key: 'credentials',
+          label: 'Credentials & sandbox account',
+          status: 'ok',
+          detail: `Authenticated as account ${identity.Account ?? 'unknown'} in ${s.awsRegion}.`,
+        });
+      }
+    } catch (error) {
+      checks.push({
+        key: 'credentials',
+        label: 'Credentials & sandbox account',
+        status: 'failed',
+        detail: `Could not authenticate to AWS: ${this.errorMessage(error)}. On a non-AWS host (Render, local) this usually means AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are unset.`,
+      });
+    }
+
+    const skipRest = (key: string, label: string): PreflightCheck => ({
+      key,
+      label,
+      status: 'skipped',
+      detail: 'Skipped — fix the credentials check first.',
+    });
+
+    // VPC
+    if (!credentialsOk || !s.awsVpcId) {
+      checks.push(skipRest('vpc', 'VPC exists'));
+    } else {
+      try {
+        const vpcs = await this.ec2.send(
+          new DescribeVpcsCommand({ VpcIds: [s.awsVpcId] }),
+        );
+        const found = vpcs.Vpcs?.length === 1;
+        checks.push({
+          key: 'vpc',
+          label: 'VPC exists',
+          status: found ? 'ok' : 'failed',
+          detail: found
+            ? `VPC ${s.awsVpcId} found.`
+            : `VPC ${s.awsVpcId} not found in ${s.awsRegion}.`,
+        });
+      } catch (error) {
+        checks.push({
+          key: 'vpc',
+          label: 'VPC exists',
+          status: 'failed',
+          detail: `Could not describe VPC ${s.awsVpcId}: ${this.errorMessage(error)}.`,
+        });
+      }
+    }
+
+    // Subnets — exist, count ≥2, all in the configured VPC
+    if (!credentialsOk || s.awsVpcSubnets.length < 2) {
+      checks.push(skipRest('subnets', 'Subnets valid'));
+    } else {
+      try {
+        const subnets = await this.ec2.send(
+          new DescribeSubnetsCommand({ SubnetIds: s.awsVpcSubnets }),
+        );
+        const found = subnets.Subnets ?? [];
+        const wrongVpc = found.filter((subnet) => subnet.VpcId !== s.awsVpcId);
+        const ok = found.length === s.awsVpcSubnets.length && !wrongVpc.length;
+        checks.push({
+          key: 'subnets',
+          label: 'Subnets valid',
+          status: ok ? 'ok' : 'failed',
+          detail: ok
+            ? `${found.length} subnets found, all in ${s.awsVpcId}.`
+            : wrongVpc.length
+              ? `Subnet(s) not in the configured VPC: ${wrongVpc.map((subnet) => subnet.SubnetId).join(', ')}.`
+              : `Expected ${s.awsVpcSubnets.length} subnets, found ${found.length}.`,
+        });
+      } catch (error) {
+        checks.push({
+          key: 'subnets',
+          label: 'Subnets valid',
+          status: 'failed',
+          detail: `Could not describe subnets: ${this.errorMessage(error)}.`,
+        });
+      }
+    }
+
+    // Security group — exists and is in the configured VPC
+    if (!credentialsOk || !s.awsSecurityGroupId) {
+      checks.push(skipRest('security_group', 'Security group valid'));
+    } else {
+      try {
+        const groups = await this.ec2.send(
+          new DescribeSecurityGroupsCommand({
+            GroupIds: [s.awsSecurityGroupId],
+          }),
+        );
+        const group = groups.SecurityGroups?.[0];
+        const ok = !!group && group.VpcId === s.awsVpcId;
+        checks.push({
+          key: 'security_group',
+          label: 'Security group valid',
+          status: ok ? 'ok' : 'failed',
+          detail: ok
+            ? `Security group ${s.awsSecurityGroupId} found in ${s.awsVpcId}.`
+            : group
+              ? `Security group ${s.awsSecurityGroupId} is in VPC ${group.VpcId}, not ${s.awsVpcId}.`
+              : `Security group ${s.awsSecurityGroupId} not found.`,
+        });
+      } catch (error) {
+        checks.push({
+          key: 'security_group',
+          label: 'Security group valid',
+          status: 'failed',
+          detail: `Could not describe security group ${s.awsSecurityGroupId}: ${this.errorMessage(error)}.`,
+        });
+      }
+    }
+
+    // AMI — exists and is available to launch
+    if (!credentialsOk || !s.awsAmiId) {
+      checks.push(skipRest('ami', 'AMI available'));
+    } else {
+      try {
+        const images = await this.ec2.send(
+          new DescribeImagesCommand({ ImageIds: [s.awsAmiId] }),
+        );
+        const image = images.Images?.[0];
+        const ok = !!image && image.State === 'available';
+        checks.push({
+          key: 'ami',
+          label: 'AMI available',
+          status: ok ? 'ok' : 'failed',
+          detail: ok
+            ? `AMI ${s.awsAmiId} is available.`
+            : image
+              ? `AMI ${s.awsAmiId} state is "${image.State}", not "available".`
+              : `AMI ${s.awsAmiId} not found in ${s.awsRegion} (is it region-specific?).`,
+        });
+      } catch (error) {
+        checks.push({
+          key: 'ami',
+          label: 'AMI available',
+          status: 'failed',
+          detail: `Could not describe AMI ${s.awsAmiId}: ${this.errorMessage(error)}.`,
+        });
+      }
+    }
+
+    return {
+      ready: checks.every((check) => check.status !== 'failed'),
+      region: s.awsRegion,
+      checks,
+    };
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   async teardown(loadBalancerArn: string): Promise<void> {

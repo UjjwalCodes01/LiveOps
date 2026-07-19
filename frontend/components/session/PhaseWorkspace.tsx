@@ -3,13 +3,17 @@
 import { ArchitectureDiagram } from '@/components/diagram/ArchitectureDiagram';
 import { CommandFeed } from '@/components/command-feed/CommandFeed';
 import { GlassPanel } from '@/components/glass/GlassPanel';
+import { LessonPanel } from '@/components/learn/LessonPanel';
 import { useSession } from '@/components/session/SessionProvider';
 import type { Phase } from '@/lib/types';
 
-// The three-panel live workspace (diagram + command feed) shared by every
-// phase page — Build Studio, Explore, Break, Diagnose, and Fix all filter
-// the same underlying event stream, matching AGENT.md §3: one event schema
-// renders every panel, nothing is a canned, page-specific animation.
+// The live workspace shared by every phase page. Left column is the "doing"
+// — the data-driven diagram plus any phase-specific visual (extra), both
+// rendered off the one shared event stream (AGENT.md §3: nothing is a
+// canned, page-specific animation). Right column is the "learning + watching"
+// — the teaching panel stacked over the live command feed, so a student
+// reads why it matters, watches it happen for real, then gets a takeaway
+// and quick-check the instant the phase completes.
 export function PhaseWorkspace({
   phase,
   emptyFeedHint,
@@ -26,14 +30,17 @@ export function PhaseWorkspace({
 
   return (
     <div className="grid gap-5 lg:grid-cols-5">
-      <GlassPanel className="p-4 lg:col-span-3" delay={0.05}>
-        <ArchitectureDiagram events={events} />
-      </GlassPanel>
+      <div className="flex flex-col gap-5 lg:col-span-3">
+        <GlassPanel className="p-4" delay={0.05}>
+          <ArchitectureDiagram events={events} />
+        </GlassPanel>
+        {extra}
+      </div>
       <div className="flex flex-col gap-5 lg:col-span-2">
+        <LessonPanel phase={phase} />
         <GlassPanel className="flex-1 p-4" delay={0.1}>
           <CommandFeed events={feedEvents} emptyHint={emptyFeedHint} />
         </GlassPanel>
-        {extra}
       </div>
     </div>
   );
