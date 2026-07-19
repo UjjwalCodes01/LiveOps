@@ -856,6 +856,16 @@ systemctl enable --now bbf-health.service
               TargetType: 'instance',
               HealthCheckProtocol: 'HTTP',
               HealthCheckPath: this.settings.awsTargetHealthPath,
+              // AWS's defaults (30s interval × 5 passes) mean a target takes
+              // ~2.5 min to first read "healthy" even when it's serving
+              // fine — borderline against the 300s waiter once you add boot
+              // time, and a slow, tense wait during a demo. Tightest values
+              // ALB allows (10s interval, 2 passes, 5s timeout) bring that
+              // down to ~20s after the target's web server is up.
+              HealthCheckIntervalSeconds: 10,
+              HealthCheckTimeoutSeconds: 5,
+              HealthyThresholdCount: 2,
+              UnhealthyThresholdCount: 2,
               Tags: [
                 { Key: 'project', Value: 'bbf-demo' },
                 { Key: 'session_id', Value: sessionId },
