@@ -1,0 +1,7 @@
+# Local AI-assistant / editor tooling config — not part of the project
+.claude/
+.codex/
+.cursor/
+
+# OS
+.DS_Store
