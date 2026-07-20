@@ -1,5 +1,1257 @@
 {
-  "capturedAt": null,
+  "capturedAt": "2026-07-20T09:43:17.243Z",
   "concept": "load_balancing",
-  "events": []
+  "events": [
+    {
+      "id": "4a3e6c59-5f2f-48cc-a20d-0acdfee95810",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "narration",
+      "action": "provision_load_balancer",
+      "explanation": "Provisioning a load balancer with three EC2 targets so incoming traffic can be spread across them.",
+      "timestamp": "2026-07-20T09:40:23.532Z"
+    },
+    {
+      "id": "4010a83f-8558-4e9b-879a-4a03b55dbf55",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "provision_load_balancer",
+      "command": "AWS SDK ELBv2: CreateLoadBalancer",
+      "explanation": "Starting provision load balancer.",
+      "timestamp": "2026-07-20T09:40:24.160Z"
+    },
+    {
+      "id": "2bd51b16-b7e6-4562-99ef-68ff97bb10ea",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "create_ec2_targets",
+      "command": "AWS SDK EC2: RunInstances",
+      "explanation": "Creating three EC2 targets across the configured subnets.",
+      "timestamp": "2026-07-20T09:40:24.567Z"
+    },
+    {
+      "id": "7b5d014e-f7d1-450b-8a3d-14c42a98c421",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "create_ec2_targets",
+      "command": "AWS SDK EC2: RunInstances",
+      "explanation": "Created three EC2 targets.",
+      "result": {
+        "instanceIds": [
+          "i-0a2352df0b04e518d",
+          "i-03e608ac3dace6cd5",
+          "i-07ed41665a56d9060"
+        ]
+      },
+      "timestamp": "2026-07-20T09:40:26.120Z"
+    },
+    {
+      "id": "526c52f4-909b-4117-833c-9fd75432e22e",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "create_target_group",
+      "command": "AWS SDK ELBv2: CreateTargetGroup",
+      "explanation": "Creating the HTTP target group.",
+      "timestamp": "2026-07-20T09:40:26.523Z"
+    },
+    {
+      "id": "147b4392-e743-4561-9a5a-1e7148fccaa5",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "create_target_group",
+      "command": "AWS SDK ELBv2: CreateTargetGroup",
+      "explanation": "Created the target group.",
+      "timestamp": "2026-07-20T09:40:27.070Z"
+    },
+    {
+      "id": "47ab4be2-0c3d-410a-af9f-50135006bbf8",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "create_application_load_balancer",
+      "command": "AWS SDK ELBv2: CreateLoadBalancer",
+      "explanation": "Creating the Application Load Balancer.",
+      "timestamp": "2026-07-20T09:40:27.172Z"
+    },
+    {
+      "id": "2b112422-6ca7-401b-873e-5f7bd09c753c",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "create_application_load_balancer",
+      "command": "AWS SDK ELBv2: CreateLoadBalancer",
+      "explanation": "Created the Application Load Balancer.",
+      "result": {
+        "dnsName": "bbf-803c99d931-484812969.us-east-1.elb.amazonaws.com"
+      },
+      "timestamp": "2026-07-20T09:40:28.286Z"
+    },
+    {
+      "id": "97d4c213-5bfc-4723-8401-ca856657b91e",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "wait_for_ec2_targets",
+      "command": "AWS SDK EC2 waiter: waitUntilInstanceRunning",
+      "explanation": "Waiting for all EC2 targets to enter the running state.",
+      "timestamp": "2026-07-20T09:40:28.388Z"
+    },
+    {
+      "id": "af777ffa-1b58-4724-9475-01c2a91b2cb1",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "wait_for_ec2_targets",
+      "command": "AWS SDK EC2 waiter: waitUntilInstanceRunning",
+      "explanation": "All EC2 targets are running.",
+      "timestamp": "2026-07-20T09:40:44.028Z"
+    },
+    {
+      "id": "17b0ecdc-3bcf-470f-8ca0-c27ae2180667",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "register_targets",
+      "command": "AWS SDK ELBv2: RegisterTargets",
+      "explanation": "Registering the EC2 targets with the target group.",
+      "timestamp": "2026-07-20T09:40:44.131Z"
+    },
+    {
+      "id": "4e46f766-58fe-4489-bdce-6b60d2d7d8e3",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "register_targets",
+      "command": "AWS SDK ELBv2: RegisterTargets",
+      "explanation": "Registered the EC2 targets.",
+      "timestamp": "2026-07-20T09:40:44.460Z"
+    },
+    {
+      "id": "061407f1-daa5-47c9-88ba-2435923251a4",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "create_listener",
+      "command": "AWS SDK ELBv2: CreateListener",
+      "explanation": "Creating the HTTP listener that forwards traffic to the target group.",
+      "timestamp": "2026-07-20T09:40:44.562Z"
+    },
+    {
+      "id": "e68219d9-08bc-4f44-9c10-a29e1a005a85",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "create_listener",
+      "command": "AWS SDK ELBv2: CreateListener",
+      "explanation": "Created the HTTP listener.",
+      "timestamp": "2026-07-20T09:40:44.772Z"
+    },
+    {
+      "id": "d3502737-cd61-4fab-b91b-6e4eb8df55a8",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_started",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth (polling)",
+      "explanation": "Waiting for all registered targets to pass health checks.",
+      "timestamp": "2026-07-20T09:40:44.874Z"
+    },
+    {
+      "id": "e571115e-c196-4211-88b3-6263587095c3",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:40:45.062Z"
+    },
+    {
+      "id": "cd946d75-96ae-4f74-bca2-6027797362a3",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:40:50.249Z"
+    },
+    {
+      "id": "e50af833-4e48-4225-814e-4fc97f1de969",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:40:55.435Z"
+    },
+    {
+      "id": "cc070db4-8295-4ed7-b18a-00d6396db09e",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:00.622Z"
+    },
+    {
+      "id": "aa7b6aa0-1c63-49b1-9491-48751bcf5244",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:05.809Z"
+    },
+    {
+      "id": "4cf41ccd-c203-4bc9-bd14-cb8ff7f3599b",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:11.000Z"
+    },
+    {
+      "id": "3f6d95e2-dea1-4275-92bb-50c7ab22276a",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:16.189Z"
+    },
+    {
+      "id": "ee4d9366-cc91-474d-ad3e-06f6d64bde3f",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:21.374Z"
+    },
+    {
+      "id": "7c2cf7fe-6064-4e6c-99c6-88e0c4815dc1",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:26.560Z"
+    },
+    {
+      "id": "e8d20b91-13e1-4ac4-88b4-71ca2cbbf6f7",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:31.747Z"
+    },
+    {
+      "id": "f15786c6-9182-44c7-b792-23ca243cd4f2",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:36.933Z"
+    },
+    {
+      "id": "8968573b-ec86-4bed-b89b-aaad949192ff",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:42.124Z"
+    },
+    {
+      "id": "33b78bbd-cb18-472d-a5a8-bba29de07346",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:47.307Z"
+    },
+    {
+      "id": "ba3d444a-9c78-4b0d-be4a-5b013222be64",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:52.494Z"
+    },
+    {
+      "id": "840d1179-3a65-4ee9-9ac0-e9912e90e56d",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:41:57.680Z"
+    },
+    {
+      "id": "003d57ea-6dd6-4777-afed-c8d99cb52bee",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:02.869Z"
+    },
+    {
+      "id": "993445a9-85ac-4792-b149-09bb44464a9f",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:08.054Z"
+    },
+    {
+      "id": "f6cec4d8-1bec-4611-9024-f8f32eb2d956",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:13.239Z"
+    },
+    {
+      "id": "79508d47-8475-4749-a1a6-aa16bd29af06",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:18.426Z"
+    },
+    {
+      "id": "2fb73b1b-5edf-4460-996e-aada85a15924",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:23.611Z"
+    },
+    {
+      "id": "8ea78a26-c47f-49bd-97c9-86c13492c59d",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:28.794Z"
+    },
+    {
+      "id": "279690c2-b126-4849-bd50-40651b1e79b2",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:33.980Z"
+    },
+    {
+      "id": "97873c41-3a37-4d18-a95c-b8a910999efa",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:39.168Z"
+    },
+    {
+      "id": "6569aecd-7f3e-4a3f-a2ba-c821413756a5",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:44.354Z"
+    },
+    {
+      "id": "de7cedc0-024e-400f-adcb-7dc54216c9fc",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:49.542Z"
+    },
+    {
+      "id": "2f7de187-5628-455e-9b77-73d512c3fe5c",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:54.730Z"
+    },
+    {
+      "id": "8fb30b5c-1080-4ff6-b48a-3872cdeeb8fb",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 0 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 0,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:42:59.917Z"
+    },
+    {
+      "id": "0fe71926-35fd-4777-8e6c-0e1580ddc094",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 3 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 3,
+        "targetHealth": [
+          {
+            "state": "healthy",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:43:05.106Z"
+    },
+    {
+      "id": "1e38fbf6-cdb5-4ce2-ae23-6c92dccb95bd",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth (polling)",
+      "explanation": "All targets are healthy and receiving traffic.",
+      "timestamp": "2026-07-20T09:43:05.208Z"
+    },
+    {
+      "id": "fa490def-0951-4901-a142-c93e10d0586c",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "build",
+      "type": "action_completed",
+      "action": "provision_load_balancer",
+      "command": "AWS SDK ELBv2: CreateLoadBalancer",
+      "explanation": "provision load balancer completed.",
+      "result": {
+        "state": "provisioning",
+        "dnsName": "bbf-803c99d931-484812969.us-east-1.elb.amazonaws.com",
+        "expiresAt": "2026-07-20T10:00:24.567Z",
+        "healthPath": "/health",
+        "instanceIds": [
+          "i-0a2352df0b04e518d",
+          "i-03e608ac3dace6cd5",
+          "i-07ed41665a56d9060"
+        ],
+        "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:[redacted-account]:targetgroup/bbf-tg-803c99d931/52f05323bc005949",
+        "loadBalancerArn": "arn:aws:elasticloadbalancing:us-east-1:[redacted-account]:loadbalancer/app/bbf-803c99d931/9606235320568966"
+      },
+      "timestamp": "2026-07-20T09:43:05.310Z",
+      "durationMs": 161151
+    },
+    {
+      "id": "b852b538-692f-4803-b7c3-2ecf67b788b5",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "break",
+      "type": "narration",
+      "action": "inject_target_failure",
+      "explanation": "Deregistering one healthy target to simulate a server failure and test resilience.",
+      "timestamp": "2026-07-20T09:43:06.128Z"
+    },
+    {
+      "id": "cac246a2-3a43-4799-b231-52970c19dbab",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "break",
+      "type": "action_started",
+      "action": "inject_target_failure",
+      "command": "AWS SDK ELBv2: DeregisterTargets",
+      "explanation": "Starting inject target failure.",
+      "timestamp": "2026-07-20T09:43:06.432Z"
+    },
+    {
+      "id": "edaf1e9c-38ac-44cf-bfd6-581cab661d7a",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "break",
+      "type": "action_completed",
+      "action": "inject_target_failure",
+      "command": "AWS SDK ELBv2: DeregisterTargets",
+      "explanation": "inject target failure completed.",
+      "result": {
+        "state": "deregistered",
+        "targetId": "i-03e608ac3dace6cd5"
+      },
+      "timestamp": "2026-07-20T09:43:07.502Z",
+      "durationMs": 1070
+    },
+    {
+      "id": "102c9aa4-56d4-4209-9c9c-982c5148556a",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "diagnose",
+      "type": "narration",
+      "action": "diagnose_target_health",
+      "explanation": "Querying each target's real health status from AWS to locate the fault.",
+      "timestamp": "2026-07-20T09:43:08.299Z"
+    },
+    {
+      "id": "408a581c-723a-4b24-9467-4891b344cd76",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "diagnose",
+      "type": "action_started",
+      "action": "diagnose_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Starting diagnose target health.",
+      "timestamp": "2026-07-20T09:43:08.605Z"
+    },
+    {
+      "id": "2e3004a1-9bb7-4cae-90d7-31d55b2f137a",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "diagnose",
+      "type": "action_completed",
+      "action": "diagnose_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "diagnose target health completed.",
+      "result": {
+        "targetHealth": [
+          {
+            "state": "draining",
+            "reason": "Target.DeregistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5",
+            "description": "Target deregistration is in progress"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:43:09.142Z",
+      "durationMs": 537
+    },
+    {
+      "id": "65570f1a-fa5d-4a9d-9f59-0d5b0824c311",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "fix",
+      "type": "narration",
+      "action": "restore_target",
+      "explanation": "Re-registering the failed target and waiting for it to pass its health check.",
+      "timestamp": "2026-07-20T09:43:10.424Z"
+    },
+    {
+      "id": "f9153166-c85c-4ac0-8fbe-0852fe286e4f",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "fix",
+      "type": "action_started",
+      "action": "restore_target",
+      "command": "AWS SDK ELBv2: RegisterTargets",
+      "explanation": "Starting restore target.",
+      "timestamp": "2026-07-20T09:43:10.934Z"
+    },
+    {
+      "id": "e69e083b-39e0-4ecc-ad9d-4a8b8927430d",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "fix",
+      "type": "action_started",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth (polling)",
+      "explanation": "Waiting for the restored target to pass its health checks.",
+      "timestamp": "2026-07-20T09:43:11.664Z"
+    },
+    {
+      "id": "dfe1a918-6bf1-4977-80c5-839c5144d296",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "fix",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 2 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 2,
+        "targetHealth": [
+          {
+            "state": "initial",
+            "reason": "Elb.RegistrationInProgress",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:43:11.849Z"
+    },
+    {
+      "id": "ec2cd023-62ac-422b-8ef2-e719170e73b8",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "fix",
+      "type": "metric_update",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth",
+      "explanation": "Health check: 3 of 3 targets healthy.",
+      "result": {
+        "total": 3,
+        "healthyCount": 3,
+        "targetHealth": [
+          {
+            "state": "healthy",
+            "targetId": "i-03e608ac3dace6cd5"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-07ed41665a56d9060"
+          },
+          {
+            "state": "healthy",
+            "targetId": "i-0a2352df0b04e518d"
+          }
+        ]
+      },
+      "timestamp": "2026-07-20T09:43:17.040Z"
+    },
+    {
+      "id": "2bd6a5e6-601a-498d-bfd1-706b2313294c",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "fix",
+      "type": "action_completed",
+      "action": "wait_for_target_health",
+      "command": "AWS SDK ELBv2: DescribeTargetHealth (polling)",
+      "explanation": "The restored target is healthy and back in service.",
+      "timestamp": "2026-07-20T09:43:17.142Z"
+    },
+    {
+      "id": "6e19b9c8-f481-40e5-ae4a-172590cc8dde",
+      "sessionId": "99a11a37-55e2-4eaa-80fe-07c23bfdd46d",
+      "phase": "fix",
+      "type": "action_completed",
+      "action": "restore_target",
+      "command": "AWS SDK ELBv2: RegisterTargets",
+      "explanation": "restore target completed.",
+      "result": {
+        "state": "healthy",
+        "targetId": "i-03e608ac3dace6cd5"
+      },
+      "timestamp": "2026-07-20T09:43:17.243Z",
+      "durationMs": 6309
+    }
+  ]
 }
