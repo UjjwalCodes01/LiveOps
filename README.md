@@ -185,21 +185,19 @@ Detailed docs: [`backend/README.md`](backend/README.md) (deployment, health chec
 
 ## Building with Codex & GPT-5.6
 
-<!--
-  ⚠️ FILL THIS IN YOURSELF, TRUTHFULLY. The hackathon requires you to describe
-  how you actually collaborated with Codex and GPT-5.6, and to provide a
-  /feedback Codex Session ID for the thread where the majority of core
-  functionality was built. Only describe work you genuinely did with Codex.
-  Judges verify this and it is judging criterion #1.
+**`/feedback` Codex Session ID:** `019f6bf5-f4e9-7b71-8879-8bc8ff430148`
 
-  Suggested structure once you write it:
+<!--
+  ⚠️ WRITE THE NARRATIVE BELOW YOURSELF, TRUTHFULLY. The hackathon requires a
+  description of how you actually collaborated with Codex and GPT-5.6 — only
+  describe work you genuinely did with Codex. Judges verify this and it is
+  judging criterion #1. Suggested structure:
     - What you used Codex/GPT-5.6 for (specific features, files, decisions)
     - Where it accelerated your workflow
     - Key product/engineering/design decisions you made
-    - Your /feedback Codex Session ID
 -->
 
-_TODO: describe your Codex + GPT-5.6 collaboration here, and add your `/feedback` Codex Session ID._
+_TODO: describe, in your own words, how you used Codex and GPT-5.6 to build this — the specific parts, where it sped you up, and the decisions you made._
 
 ---
 
