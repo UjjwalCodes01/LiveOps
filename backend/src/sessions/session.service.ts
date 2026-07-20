@@ -32,6 +32,18 @@ const PHASE_BY_STATE: Record<Session['state'], Phase> = {
   failed: 'fix',
 };
 
+// States in which a session holds live, billable AWS resources — anything
+// past 'created' (which has provisioned nothing) but not yet terminal
+// (whose resources have been / are being torn down). Used for the global
+// concurrency cap that bounds total AWS spend.
+const LIVE_RESOURCE_STATES: Session['state'][] = [
+  'building',
+  'ready',
+  'broken',
+  'diagnosing',
+  'fixing',
+];
+
 interface SessionRow {
   id: string;
   concept: 'load_balancing';
@@ -68,7 +80,9 @@ export class SessionService implements OnModuleDestroy {
         max: 20,
         idleTimeoutMillis: 30_000,
         connectionTimeoutMillis: 5_000,
-        ssl: settings.databaseSsl ? { rejectUnauthorized: false } : undefined,
+        ssl: settings.databaseSsl
+          ? { rejectUnauthorized: settings.databaseSslRejectUnauthorized }
+          : undefined,
       });
     else if (settings.environment !== 'test')
       throw new Error('DATABASE_URL is required outside the test environment.');
@@ -197,6 +211,23 @@ export class SessionService implements OnModuleDestroy {
     if (!response.rowCount)
       throw new NotFoundException(`Session ${sessionId} was not found`);
     return this.mapSession(response.rows[0]);
+  }
+
+  // Count of sessions currently holding live AWS resources — the input to
+  // the global concurrency cap. Approximate by design (a check-then-act
+  // race can let the true count drift by a few); the AWS resource TTL and
+  // budget alarm are the hard backstops, this just keeps the steady state
+  // bounded regardless of client volume.
+  async countActiveSessions(): Promise<number> {
+    if (!this.pool)
+      return [...this.testSessions.values()].filter((session) =>
+        LIVE_RESOURCE_STATES.includes(session.state),
+      ).length;
+    const response = await this.pool.query<{ count: string }>(
+      'SELECT count(*)::int AS count FROM sessions WHERE state = ANY($1::text[])',
+      [LIVE_RESOURCE_STATES],
+    );
+    return Number(response.rows[0]?.count ?? 0);
   }
 
   async appendEvent(event: SessionEvent): Promise<void> {

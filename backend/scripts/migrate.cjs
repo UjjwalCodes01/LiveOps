@@ -12,7 +12,10 @@ async function migrate() {
   // RDS) needs this, or the connection fails outright before any SQL runs.
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    ssl:
+      process.env.DATABASE_SSL === 'true'
+        ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true' }
+        : undefined,
   });
   await client.connect();
   try {

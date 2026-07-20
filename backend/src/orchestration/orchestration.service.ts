@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApplicationConfiguration } from '../config/configuration';
 import { ExecutorService } from '../executor/executor.service';
 import { Session } from '../events/domain';
 import { SessionService } from '../sessions/session.service';
@@ -40,6 +46,7 @@ export class OrchestrationService {
   constructor(
     private readonly sessions: SessionService,
     private readonly executor: ExecutorService,
+    private readonly config: ConfigService,
   ) {}
 
   async build(sessionId: string) {
@@ -62,6 +69,9 @@ export class OrchestrationService {
   ): Promise<Session> {
     const state = PHASE_STATES[phase];
     return this.sessions.withOperationLock(sessionId, phase, async () => {
+      // Only 'build' provisions new AWS resources, so it's the only phase
+      // that can grow AWS spend — gate it on the global concurrency cap.
+      if (phase === 'build') await this.enforceLiveSessionCap();
       if (state.inProgress) await this.transition(sessionId, state.inProgress);
       try {
         await this.executor.run({ sessionId, phase, name: action });
@@ -77,6 +87,22 @@ export class OrchestrationService {
       }
       return this.sessions.transition(sessionId, state.completed);
     });
+  }
+
+  // Global cost ceiling: refuse to start a new build once the configured
+  // number of sessions already hold live AWS resources. This bounds total
+  // spend regardless of how many clients use the (necessarily public)
+  // frontend API key — something per-IP rate limits can't guarantee. Only
+  // meaningful when AWS is actually provisioning; the resource TTL and
+  // budget alarm remain the hard backstops.
+  private async enforceLiveSessionCap(): Promise<void> {
+    const settings = this.config.getOrThrow<ApplicationConfiguration>('app');
+    if (!settings.awsEnabled || settings.maxConcurrentLiveSessions <= 0) return;
+    const active = await this.sessions.countActiveSessions();
+    if (active >= settings.maxConcurrentLiveSessions)
+      throw new ServiceUnavailableException(
+        `The demo is at capacity (${active}/${settings.maxConcurrentLiveSessions} live environments running). Please try again in a few minutes — each environment auto-releases on its TTL.`,
+      );
   }
 
   private async transition(

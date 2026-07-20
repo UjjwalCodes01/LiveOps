@@ -37,7 +37,7 @@ export function configureApplication(app: INestApplication): void {
   app.useWebSocketAdapter(new ConfiguredSocketIoAdapter(app));
 }
 
-function validateProductionConfiguration(
+export function validateProductionConfiguration(
   config: ApplicationConfiguration,
 ): void {
   // OpenAI config is only required when the LLM path is actually enabled;
@@ -47,6 +47,17 @@ function validateProductionConfiguration(
     (!config.openAiApiKey ||
       config.openAiTimeoutMs < 1 ||
       config.openAiMaxRetries < 0);
+  // AWS sandbox config is only required when AWS_ENABLED=true. With it
+  // false the app boots into a safe, no-provisioning mode (the render.yaml
+  // blueprint default) — the same conditional treatment OpenAI gets, so a
+  // production deploy doesn't have to touch real AWS just to start.
+  const awsInvalid =
+    config.awsEnabled &&
+    (!config.awsAccountId ||
+      !config.awsVpcId ||
+      config.awsVpcSubnets.length < 2 ||
+      !config.awsSecurityGroupId ||
+      !config.awsAmiId);
   if (
     config.environment === 'production' &&
     (!config.databaseUrl ||
@@ -54,15 +65,10 @@ function validateProductionConfiguration(
       openAiInvalid ||
       config.sessionTtlMinutes < 1 ||
       config.awsResourceTtlMinutes < 1 ||
-      !config.awsEnabled ||
-      !config.awsAccountId ||
-      !config.awsVpcId ||
-      config.awsVpcSubnets.length < 2 ||
-      !config.awsSecurityGroupId ||
-      !config.awsAmiId)
+      awsInvalid)
   ) {
     throw new Error(
-      'Production requires validated database, authentication, OpenAI, and sandbox AWS configuration.',
+      'Production requires a validated database and API key; OpenAI config when OPENAI_ENABLED=true; and full sandbox AWS config when AWS_ENABLED=true.',
     );
   }
 }

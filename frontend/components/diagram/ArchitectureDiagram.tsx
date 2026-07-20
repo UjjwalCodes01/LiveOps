@@ -4,6 +4,7 @@ import '@xyflow/react/dist/style.css';
 import { Background, Controls, ReactFlow, type Edge, type Node } from '@xyflow/react';
 import { useMemo } from 'react';
 import type { SessionEvent } from '@/lib/types';
+import { deriveInfraHealth } from '@/lib/topology';
 import { DiagramNode, type DiagramNodeData, type DiagramNodeStatus } from './DiagramNode';
 
 interface ProvisionResult {
@@ -126,11 +127,19 @@ function buildGraph(
     }
   }
 
+  // Derive the ALB and target-group status from the real, event-driven
+  // health of the targets rather than hardcoding "healthy" — so when you
+  // break a target the group visibly degrades and the LB reflects whether
+  // it still has anything to route to. See deriveInfraHealth (unit-tested).
+  const instanceStatuses = instanceIds.map((id) => healthByInstance.get(id) ?? 'pending');
+  const { loadBalancer: loadBalancerStatus, targetGroup: targetGroupStatus } =
+    deriveInfraHealth(instanceStatuses);
+
   details.set('lb', {
     id: 'lb',
     kind: 'load_balancer',
     title: 'Application Load Balancer',
-    status: 'healthy',
+    status: loadBalancerStatus,
     attributes: [
       { label: 'DNS name', value: provisioned.dnsName ?? 'unknown' },
       { label: 'State', value: provisioned.state ?? 'unknown' },
@@ -142,7 +151,7 @@ function buildGraph(
     id: 'tg',
     kind: 'target_group',
     title: 'Target Group',
-    status: 'healthy',
+    status: targetGroupStatus,
     attributes: [{ label: 'ARN', value: provisioned.targetGroupArn ?? 'unknown' }],
     neighbors: ['lb', ...instanceIds],
   });
@@ -177,13 +186,13 @@ function buildGraph(
       id: 'lb',
       type: 'resource',
       position: { x: columnX.lb, y: instanceIds.length * 40 },
-      data: nodeData('load_balancer', 'Application Load Balancer', provisioned.dnsName, 'healthy', 'lb'),
+      data: nodeData('load_balancer', 'Application Load Balancer', provisioned.dnsName, loadBalancerStatus, 'lb'),
     },
     {
       id: 'tg',
       type: 'resource',
       position: { x: columnX.tg, y: instanceIds.length * 40 },
-      data: nodeData('target_group', 'Target Group', undefined, 'healthy', 'tg'),
+      data: nodeData('target_group', 'Target Group', undefined, targetGroupStatus, 'tg'),
     },
     ...instanceIds.map((id, index) => ({
       id,

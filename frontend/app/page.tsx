@@ -5,6 +5,7 @@ import {
   Compass,
   Hammer,
   LineChart,
+  Play,
   ShieldCheck,
   Stethoscope,
   type LucideIcon,
@@ -15,6 +16,7 @@ import { motion } from 'motion/react';
 import Link from 'next/link';
 import { GlassButton } from '@/components/glass/GlassButton';
 import { GlassPanel } from '@/components/glass/GlassPanel';
+import { hasReplay } from '@/lib/replay';
 
 const STEPS: Array<{ label: string; icon: LucideIcon; color: string }> = [
   { label: 'Build', icon: Hammer, color: 'var(--status-info)' },
@@ -98,11 +100,21 @@ export default function LandingPage() {
             );
           })}
         </div>
-        <p className="mt-5 text-sm text-white/40">
-          A live recorded run of this exact loop will play here once a demo session has been
-          captured — this platform only ever shows what actually happened, so there&rsquo;s no
-          preview until there&rsquo;s something real to show.
-        </p>
+        {hasReplay ? (
+          <Link
+            href="/replay"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg border border-status-warning/40 bg-status-warning/10 px-4 py-2 text-sm font-medium text-status-warning transition-colors hover:bg-status-warning/20"
+          >
+            <Play className="h-4 w-4" />
+            Watch a recorded run
+          </Link>
+        ) : (
+          <p className="mt-5 text-sm text-white/40">
+            A live recorded run of this exact loop will play here once a demo session has been
+            captured — this platform only ever shows what actually happened, so there&rsquo;s no
+            preview until there&rsquo;s something real to show.
+          </p>
+        )}
       </GlassPanel>
 
       <p className="flex max-w-lg items-center gap-2 text-xs text-white/30">

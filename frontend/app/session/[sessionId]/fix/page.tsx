@@ -1,6 +1,7 @@
 'use client';
 
 import { GlassPanel } from '@/components/glass/GlassPanel';
+import { DownloadReplay } from '@/components/session/DownloadReplay';
 import { LiveEndpoint } from '@/components/session/LiveEndpoint';
 import { PhaseActionPanel } from '@/components/session/PhaseActionPanel';
 import { PhaseWorkspace } from '@/components/session/PhaseWorkspace';
@@ -62,6 +63,7 @@ export default function FixPage() {
       <PhaseWorkspace phase="fix" emptyFeedHint="Run the fix to watch the system recover." />
       <LiveEndpoint />
       <RecoverySummary />
+      <DownloadReplay />
     </div>
   );
 }

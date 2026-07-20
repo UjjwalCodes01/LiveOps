@@ -45,6 +45,11 @@ services:
         value: "true"
       - key: API_KEYS
         sync: false # comma-separated x-api-key values the frontend must send
+      # Default off so a fresh blueprint deploy boots with no OpenAI key —
+      # the agent runs its deterministic, no-LLM path. Set true (and fill
+      # OPENAI_API_KEY) to enable live GPT reasoning.
+      - key: OPENAI_ENABLED
+        value: "false"
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
@@ -87,6 +92,10 @@ services:
         value: /health
       - key: AWS_RESOURCE_TTL_MINUTES
         value: "20"
+      # Global cost ceiling — max sessions holding live AWS resources at
+      # once. Bounds total spend regardless of frontend API-key exposure.
+      - key: MAX_CONCURRENT_LIVE_SESSIONS
+        value: "10"
       - key: AWS_ACCESS_KEY_ID
         sync: false
       - key: AWS_SECRET_ACCESS_KEY

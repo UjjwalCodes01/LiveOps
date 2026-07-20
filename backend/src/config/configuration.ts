@@ -28,8 +28,14 @@ export interface ApplicationConfiguration {
   sessionTtlMinutes: number;
   sessionRetentionDays: number;
   awsResourceTtlMinutes: number;
+  // Hard cap on how many sessions can hold live AWS resources at once. A
+  // global cost ceiling that bounds total spend regardless of how many
+  // clients hit the (necessarily public) frontend API key — per-IP rate
+  // limits can't do that alone. 0 or negative means unlimited.
+  maxConcurrentLiveSessions: number;
   databaseUrl?: string;
   databaseSsl: boolean;
+  databaseSslRejectUnauthorized: boolean;
   apiKeys: string[];
 }
 
@@ -91,16 +97,24 @@ export const configuration = registerAs(
       process.env.AWS_RESOURCE_TTL_MINUTES ?? '20',
       10,
     ),
+    maxConcurrentLiveSessions: Number.parseInt(
+      process.env.MAX_CONCURRENT_LIVE_SESSIONS ?? '10',
+      10,
+    ),
     databaseUrl: process.env.DATABASE_URL,
     // Explicit, not auto-detected from NODE_ENV or the connection string —
     // predictable beats magic. Managed Postgres (Render, Supabase, RDS)
     // needs this set true; a local/self-hosted Postgres usually doesn't
     // have TLS configured at all, so this defaults to false.
-    // rejectUnauthorized:false because these providers commonly present a
-    // cert chain that doesn't validate against Node's default trust store
-    // — the connection itself is still encrypted, this only skips CA
-    // validation, which is the standard pattern for these providers.
     databaseSsl: process.env.DATABASE_SSL === 'true',
+    // Whether to verify the server's TLS certificate chain. Defaults to
+    // false because managed Postgres providers commonly present a cert that
+    // doesn't validate against Node's default trust store — the connection
+    // is still encrypted either way, this only controls CA validation.
+    // Set true (ideally alongside a provider CA bundle in NODE_EXTRA_CA_CERTS)
+    // for deployments that require verified certs / MITM protection.
+    databaseSslRejectUnauthorized:
+      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true',
     apiKeys: (process.env.API_KEYS ?? '').split(',').filter(Boolean),
   }),
 );

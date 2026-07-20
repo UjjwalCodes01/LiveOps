@@ -141,9 +141,13 @@ Because the app drives real, billable AWS infrastructure from an LLM, reliabilit
 - **Least-privilege IAM** — `backend/infra/iam-policy.json` scopes the agent to tagged sandbox resources only.
 - **Action allow-list** — the LLM can only choose from verified per-phase actions, never arbitrary AWS calls.
 - **Resource TTL + auto-teardown** — a scheduled job reaps each session's tagged resources after `AWS_RESOURCE_TTL_MINUTES`, so nothing lingers.
+- **Global concurrency cap** — `MAX_CONCURRENT_LIVE_SESSIONS` bounds how many sessions can hold live AWS resources at once, so total spend is capped regardless of client volume (per-IP rate limits alone can't guarantee this).
+- **Per-endpoint rate limits** — session creation and the agent/build endpoint are throttled (20/min and 10/min per IP) on top of a global 120/min.
 - **Session lifecycle** — idle sessions expire and clean up; completed sessions and their event logs are retention-pruned from Postgres.
 - **Budget alarm** — `backend/infra/create-budget-alarm.sh` pages you on cost overruns independent of app health.
 - **Rollback on partial failure** — a failed build tears down anything half-created instead of orphaning it.
+
+> **On the frontend API key:** it ships in the browser bundle by necessity — a public SPA can't hide a shared credential, and the per-session access token (minted server-side) is what actually protects a given session's data. The layers above (concurrency cap + rate limits + resource TTL + budget alarm) are what bound cost from key exposure. A future hardening would move to server-minted, origin-bound session tokens so no shared key ships to the client at all.
 
 ---
 

@@ -1,9 +1,8 @@
 name: frontend-ci
 
-# No test step: the frontend currently has no test framework installed
-# (no Jest/Vitest/Playwright/RTL) — build (which includes Next's type
-# check) and lint are the only real gates that exist today. Don't add a
-# fake test step; add real tests first if that's wanted.
+# Gates: build (includes Next's type check), lint, and Vitest unit tests
+# over the pure logic (curriculum, humanize, topology health). Component/DOM
+# tests (jsdom + Testing Library) can be layered on top of this later.
 on:
   push:
     branches: [main]
@@ -16,7 +15,7 @@ defaults:
     working-directory: frontend
 
 jobs:
-  build-lint:
+  build-lint-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,3 +27,4 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run lint
+      - run: npm test

@@ -11,7 +11,10 @@ function makeSession(state: Session['state']): Session {
   };
 }
 
-function makeSessionServiceMock(initialState: Session['state']) {
+function makeSessionServiceMock(
+  initialState: Session['state'],
+  activeCount = 0,
+) {
   let state = initialState;
   return {
     async withOperationLock<T>(
@@ -28,6 +31,21 @@ function makeSessionServiceMock(initialState: Session['state']) {
       state = next;
       return Promise.resolve(makeSession(state));
     },
+    countActiveSessions(): Promise<number> {
+      return Promise.resolve(activeCount);
+    },
+  };
+}
+
+// The concurrency cap only engages when AWS is enabled; default the config
+// mock to AWS-off so existing (non-cap) tests are unaffected.
+function makeConfigMock(overrides: Record<string, unknown> = {}) {
+  return {
+    getOrThrow: () => ({
+      awsEnabled: false,
+      maxConcurrentLiveSessions: 10,
+      ...overrides,
+    }),
   };
 }
 
@@ -43,6 +61,7 @@ describe('OrchestrationService', () => {
     const service = new OrchestrationService(
       sessions as never,
       executor as never,
+      makeConfigMock() as never,
     );
 
     const afterBreak = await service.break('session-1');
@@ -59,6 +78,7 @@ describe('OrchestrationService', () => {
     const service = new OrchestrationService(
       sessions as never,
       executor as never,
+      makeConfigMock() as never,
     );
 
     const result = await service.build('session-1');
@@ -76,6 +96,7 @@ describe('OrchestrationService', () => {
     const service = new OrchestrationService(
       sessions as never,
       executor as never,
+      makeConfigMock() as never,
     );
 
     const result = await service.fix('session-1');
@@ -88,6 +109,7 @@ describe('OrchestrationService', () => {
     const service = new OrchestrationService(
       sessions as never,
       executor as never,
+      makeConfigMock() as never,
     );
 
     await expect(service.build('session-1')).rejects.toThrow('boom');
@@ -102,6 +124,7 @@ describe('OrchestrationService', () => {
     const service = new OrchestrationService(
       sessions as never,
       executor as never,
+      makeConfigMock() as never,
     );
 
     await expect(service.break('session-1')).rejects.toThrow('aws blew up');
@@ -114,6 +137,7 @@ describe('OrchestrationService', () => {
     const service = new OrchestrationService(
       sessions as never,
       executor as never,
+      makeConfigMock() as never,
     );
 
     const result = await service.executeAction(
@@ -121,6 +145,56 @@ describe('OrchestrationService', () => {
       'explore',
       'inspect_load_balancers',
     );
+    expect(result.state).toBe('ready');
+  });
+
+  it('refuses a new build once the live-session cap is reached (AWS enabled)', async () => {
+    const sessions = makeSessionServiceMock('created', 10); // 10 already live
+    const executor = { run: jest.fn().mockResolvedValue({}) };
+    const service = new OrchestrationService(
+      sessions as never,
+      executor as never,
+      makeConfigMock({
+        awsEnabled: true,
+        maxConcurrentLiveSessions: 10,
+      }) as never,
+    );
+
+    await expect(service.build('session-1')).rejects.toThrow(/at capacity/i);
+    // Nothing was provisioned — the cap short-circuits before the executor.
+    expect(executor.run).not.toHaveBeenCalled();
+  });
+
+  it('allows a build while below the live-session cap', async () => {
+    const sessions = makeSessionServiceMock('created', 3);
+    const executor = { run: jest.fn().mockResolvedValue({}) };
+    const service = new OrchestrationService(
+      sessions as never,
+      executor as never,
+      makeConfigMock({
+        awsEnabled: true,
+        maxConcurrentLiveSessions: 10,
+      }) as never,
+    );
+
+    const result = await service.build('session-1');
+    expect(result.state).toBe('ready');
+    expect(executor.run).toHaveBeenCalled();
+  });
+
+  it('does not enforce the cap when AWS is disabled (no real spend to bound)', async () => {
+    const sessions = makeSessionServiceMock('created', 999);
+    const executor = { run: jest.fn().mockResolvedValue({}) };
+    const service = new OrchestrationService(
+      sessions as never,
+      executor as never,
+      makeConfigMock({
+        awsEnabled: false,
+        maxConcurrentLiveSessions: 1,
+      }) as never,
+    );
+
+    const result = await service.build('session-1');
     expect(result.state).toBe('ready');
   });
 });
