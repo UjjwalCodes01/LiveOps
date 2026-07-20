@@ -825,7 +825,12 @@ systemctl enable --now bbf-health.service
         'AWS SDK EC2: RunInstances',
         'Creating three EC2 targets across the configured subnets.',
       );
-      const instanceResponses = await Promise.all(
+      // allSettled, not all: if one launch rejects we still need the
+      // instance IDs from the ones that succeeded, or rollback (in the
+      // catch below) would leak them — Promise.all discards the fulfilled
+      // values on the first rejection. Capture every launched ID into the
+      // outer instanceIds first, then surface the failure.
+      const instanceResults = await Promise.allSettled(
         Array.from({ length: 3 }, (_, index) =>
           this.withThrottleNarration(
             () =>
@@ -856,12 +861,20 @@ systemctl enable --now bbf-health.service
           ),
         ),
       );
-      instanceIds = instanceResponses.flatMap(
-        (instances) =>
-          instances.Instances?.flatMap((instance) =>
-            instance.InstanceId ? [instance.InstanceId] : [],
-          ) ?? [],
+      instanceIds = instanceResults.flatMap((result) =>
+        result.status === 'fulfilled'
+          ? (result.value.Instances?.flatMap((instance) =>
+              instance.InstanceId ? [instance.InstanceId] : [],
+            ) ?? [])
+          : [],
       );
+      const failedLaunch = instanceResults.find(
+        (result) => result.status === 'rejected',
+      );
+      if (failedLaunch)
+        throw failedLaunch.reason instanceof Error
+          ? failedLaunch.reason
+          : new ServiceUnavailableException('Failed to launch an EC2 target.');
       if (instanceIds.length !== 3)
         throw new ServiceUnavailableException(
           'AWS did not create all three target instances.',
@@ -1130,12 +1143,26 @@ systemctl enable --now bbf-health.service
       TargetGroupArn: target.TargetGroupArn,
       Targets: [{ Id: selected.Id, Port: selected.Port }],
     };
-    if (register)
+    if (register) {
       await this.client.send(new RegisterTargetsCommand(selectedTarget));
-    else await this.client.send(new DeregisterTargetsCommand(selectedTarget));
+      // Registration alone is not recovery — the ALB re-runs its health
+      // checks and only routes to the target once it passes. Wait for that
+      // here so the fix phase can't be declared complete (and the session
+      // marked 'completed') until the system's own health checks confirm
+      // the target is actually back in service. This is the "verify" step
+      // the lesson teaches: a fix isn't a fix until it's proven. If the
+      // target never recovers, this throws and the fix is correctly marked
+      // failed rather than falsely succeeding.
+      await waitUntilTargetInService(
+        { client: this.client, maxWaitTime: 180 },
+        selectedTarget,
+      );
+    } else {
+      await this.client.send(new DeregisterTargetsCommand(selectedTarget));
+    }
     return {
       targetId: selected.Id,
-      state: register ? 'registered' : 'deregistered',
+      state: register ? 'healthy' : 'deregistered',
     };
   }
 

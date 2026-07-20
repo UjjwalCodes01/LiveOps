@@ -9,12 +9,12 @@ interface SessionResponse {
   session: { id: string };
   accessToken: string;
 }
-interface SessionStateResponse {
-  state: string;
-}
 interface SessionEventResponse {
   type: string;
   action?: string;
+}
+interface AgentExecuteResponse {
+  session: { state: string };
 }
 const runSandboxTest = process.env.RUN_AWS_INTEGRATION_TESTS === 'true';
 
@@ -22,7 +22,9 @@ function requireSandboxConfiguration(): void {
   const required = [
     'DATABASE_URL',
     'API_KEYS',
-    'OPENAI_API_KEY',
+    // OPENAI_API_KEY intentionally not required: this test forces
+    // OPENAI_ENABLED=false so the agent runs its deterministic scripted
+    // path (see beforeAll), which needs no key.
     'AWS_REGION',
     'AWS_ACCOUNT_ID',
     'AWS_VPC_ID',
@@ -50,6 +52,11 @@ function requireSandboxConfiguration(): void {
     let sessionToken: string;
 
     beforeAll(async () => {
+      // Drive the agent deterministically (scripted, no live LLM) so the
+      // build phase reliably provisions rather than the model possibly
+      // choosing to merely inspect. Must be set before the module loads its
+      // config. This still exercises the real /agent/execute production path.
+      process.env.OPENAI_ENABLED = 'false';
       requireSandboxConfiguration();
       apiKey = process.env.API_KEYS?.split(',')[0] ?? '';
       const module = await Test.createTestingModule({
@@ -84,26 +91,21 @@ function requireSandboxConfiguration(): void {
       sessionId = created.session.id;
       sessionToken = created.accessToken;
       headers['x-session-token'] = sessionToken;
-      const built = await request(server)
-        .post(`/api/sessions/${sessionId}/build`)
-        .set(headers)
-        .expect(201);
-      expect((built.body as SessionStateResponse).state).toBe('ready');
-      const broken = await request(server)
-        .post(`/api/sessions/${sessionId}/break`)
-        .set(headers)
-        .expect(201);
-      expect((broken.body as SessionStateResponse).state).toBe('broken');
-      const diagnosed = await request(server)
-        .post(`/api/sessions/${sessionId}/diagnose`)
-        .set(headers)
-        .expect(201);
-      expect((diagnosed.body as SessionStateResponse).state).toBe('diagnosing');
-      const fixed = await request(server)
-        .post(`/api/sessions/${sessionId}/fix`)
-        .set(headers)
-        .expect(201);
-      expect((fixed.body as SessionStateResponse).state).toBe('completed');
+      // Drive the phases through /agent/execute — the exact endpoint the
+      // frontend calls — rather than the raw orchestration shortcuts, so
+      // this validates the real agent → orchestration → executor path.
+      async function runPhase(phase: string): Promise<string> {
+        const response = await request(server)
+          .post(`/api/sessions/${sessionId}/agent/execute`)
+          .set(headers)
+          .send({ phase })
+          .expect(201);
+        return (response.body as AgentExecuteResponse).session.state;
+      }
+      expect(await runPhase('build')).toBe('ready');
+      expect(await runPhase('break')).toBe('broken');
+      expect(await runPhase('diagnose')).toBe('diagnosing');
+      expect(await runPhase('fix')).toBe('completed');
       const events = await request(server)
         .get(`/api/sessions/${sessionId}/events`)
         .set(headers)
@@ -124,6 +126,6 @@ function requireSandboxConfiguration(): void {
           'restore_target',
         ]),
       );
-    }, 330_000);
+    }, 600_000);
   },
 );
