@@ -25,10 +25,7 @@ import {
   TerminateInstancesCommand,
   waitUntilInstanceRunning,
 } from '@aws-sdk/client-ec2';
-import {
-  waitUntilLoadBalancersDeleted,
-  waitUntilTargetInService,
-} from '@aws-sdk/client-elastic-load-balancing-v2';
+import { waitUntilLoadBalancersDeleted } from '@aws-sdk/client-elastic-load-balancing-v2';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 import {
   BadRequestException,
@@ -42,7 +39,7 @@ import { ActionName } from '../actions';
 
 export type ProgressReporter = (
   action: string,
-  type: 'action_started' | 'action_completed',
+  type: 'action_started' | 'action_completed' | 'metric_update',
   command: string,
   explanation: string,
   result?: Record<string, unknown>,
@@ -91,11 +88,11 @@ export class AwsAdapter {
       case 'provision_load_balancer':
         return this.provision(sessionId, report);
       case 'inject_target_failure':
-        return this.updateTarget(sessionId, false);
+        return this.updateTarget(sessionId, false, report);
       case 'diagnose_target_health':
         return this.diagnose(sessionId);
       case 'restore_target':
-        return this.updateTarget(sessionId, true);
+        return this.updateTarget(sessionId, true, report);
     }
   }
 
@@ -1055,11 +1052,12 @@ systemctl enable --now bbf-health.service
       await report?.(
         'wait_for_target_health',
         'action_started',
-        'AWS SDK ELBv2 waiter: waitUntilTargetInService',
+        'AWS SDK ELBv2: DescribeTargetHealth (polling)',
         'Waiting for all registered targets to pass health checks.',
       );
-      await waitUntilTargetInService(
-        { client: this.client, maxWaitTime: 300 },
+      // Poll + narrate each target's health as it comes up, rather than a
+      // silent wait, so the UI shows targets moving initial → healthy.
+      await this.pollTargetsUntilHealthy(
         {
           TargetGroupArn: targetGroupArn,
           Targets: instanceIds.map((Id) => ({
@@ -1067,11 +1065,14 @@ systemctl enable --now bbf-health.service
             Port: this.settings.awsTargetPort,
           })),
         },
+        'wait_for_target_health',
+        report,
+        { maxWaitSeconds: 300 },
       );
       await report?.(
         'wait_for_target_health',
         'action_completed',
-        'AWS SDK ELBv2 waiter: waitUntilTargetInService',
+        'AWS SDK ELBv2: DescribeTargetHealth (polling)',
         'All targets are healthy and receiving traffic.',
       );
       return {
@@ -1126,9 +1127,57 @@ systemctl enable --now bbf-health.service
     );
   }
 
+  // Polls DescribeTargetHealth on a schedule until every target is healthy,
+  // emitting a metric_update each poll with the per-target states. Replaces
+  // the silent AWS waiter so the frontend can visibly show targets moving
+  // initial → healthy during the build and fix waits instead of a spinner
+  // that jumps straight to "done". Throws if they don't all recover in time.
+  private async pollTargetsUntilHealthy(
+    pollTarget: {
+      TargetGroupArn: string;
+      Targets?: { Id: string; Port?: number }[];
+    },
+    action: string,
+    report: ProgressReporter | undefined,
+    options: { maxWaitSeconds: number; intervalSeconds?: number },
+  ): Promise<void> {
+    const intervalMs = (options.intervalSeconds ?? 5) * 1000;
+    const deadline = Date.now() + options.maxWaitSeconds * 1000;
+    const total = pollTarget.Targets?.length ?? 0;
+    for (;;) {
+      const health = await this.client.send(
+        new DescribeTargetHealthCommand(pollTarget),
+      );
+      const targetHealth = (health.TargetHealthDescriptions ?? []).map(
+        (description) => ({
+          targetId: description.Target?.Id,
+          state: description.TargetHealth?.State,
+          reason: description.TargetHealth?.Reason,
+        }),
+      );
+      const healthyCount = targetHealth.filter(
+        (entry) => entry.state === 'healthy',
+      ).length;
+      await report?.(
+        action,
+        'metric_update',
+        'AWS SDK ELBv2: DescribeTargetHealth',
+        `Health check: ${healthyCount} of ${total} target${total === 1 ? '' : 's'} healthy.`,
+        { targetHealth, healthyCount, total },
+      );
+      if (total > 0 && healthyCount === total) return;
+      if (Date.now() >= deadline)
+        throw new ServiceUnavailableException(
+          `Targets did not all become healthy within ${options.maxWaitSeconds}s (${healthyCount}/${total} healthy).`,
+        );
+      await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
   private async updateTarget(
     sessionId: string,
     register: boolean,
+    report?: ProgressReporter,
   ): Promise<Record<string, unknown>> {
     const target = await this.target(sessionId);
     const health = await this.client.send(
@@ -1155,11 +1204,28 @@ systemctl enable --now bbf-health.service
       // marked 'completed') until the system's own health checks confirm
       // the target is actually back in service. This is the "verify" step
       // the lesson teaches: a fix isn't a fix until it's proven. If the
-      // target never recovers, this throws and the fix is correctly marked
-      // failed rather than falsely succeeding.
-      await waitUntilTargetInService(
-        { client: this.client, maxWaitTime: 180 },
-        selectedTarget,
+      // target never recovers, the poller throws and the fix is correctly
+      // marked failed rather than falsely succeeding. Polling (not a silent
+      // waiter) so the UI shows the restored target climb back to healthy.
+      await report?.(
+        'wait_for_target_health',
+        'action_started',
+        'AWS SDK ELBv2: DescribeTargetHealth (polling)',
+        'Waiting for the restored target to pass its health checks.',
+      );
+      await this.pollTargetsUntilHealthy(
+        target,
+        'wait_for_target_health',
+        report,
+        {
+          maxWaitSeconds: 180,
+        },
+      );
+      await report?.(
+        'wait_for_target_health',
+        'action_completed',
+        'AWS SDK ELBv2: DescribeTargetHealth (polling)',
+        'The restored target is healthy and back in service.',
       );
     } else {
       await this.client.send(new DeregisterTargetsCommand(selectedTarget));

@@ -42,6 +42,21 @@ function statusFor(action: string, events: SessionEvent[]): StepStatus {
   return status;
 }
 
+// Latest per-poll health summary emitted during the health-check wait, so
+// the step can show a live "2/3 healthy" count climbing rather than a static
+// "waiting" label.
+function latestHealthPoll(events: SessionEvent[]): { healthy: number; total: number } | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i]!;
+    if (event.type === 'metric_update' && event.action === 'wait_for_target_health') {
+      const result = event.result as { healthyCount?: number; total?: number } | undefined;
+      if (typeof result?.healthyCount === 'number' && typeof result?.total === 'number')
+        return { healthy: result.healthyCount, total: result.total };
+    }
+  }
+  return null;
+}
+
 export function BuildProgress() {
   const { events } = useSession();
   // Only meaningful once a build has actually started emitting steps —
@@ -57,6 +72,7 @@ export function BuildProgress() {
     status: statusFor(step.action, events),
   }));
   const doneCount = steps.filter((step) => step.status === 'done').length;
+  const healthPoll = latestHealthPoll(events);
 
   return (
     <GlassPanel className="p-4" delay={0.1}>
@@ -81,6 +97,14 @@ export function BuildProgress() {
                 .join(' ')}
             >
               {step.label}
+              {step.action === 'wait_for_target_health' &&
+                step.status === 'active' &&
+                healthPoll && (
+                  <span className="text-white/40">
+                    {' '}
+                    · {healthPoll.healthy}/{healthPoll.total} healthy
+                  </span>
+                )}
             </span>
           </li>
         ))}

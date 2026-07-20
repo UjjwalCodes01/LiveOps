@@ -105,18 +105,23 @@ function buildGraph(
   instanceIds.forEach((id) => healthByInstance.set(id, 'healthy'));
 
   for (const event of events) {
-    if (event.type !== 'action_completed') continue;
-    if (event.action === 'inject_target_failure') {
+    // Completed actions and the periodic health polls (metric_update)
+    // emitted during the build/fix waits both move target health.
+    if (event.type !== 'action_completed' && event.type !== 'metric_update') continue;
+    if (event.type === 'action_completed' && event.action === 'inject_target_failure') {
       const result = event.result as { targetId?: string } | undefined;
       if (result?.targetId) healthByInstance.set(result.targetId, 'error');
     }
-    if (event.action === 'restore_target') {
+    if (event.type === 'action_completed' && event.action === 'restore_target') {
       const result = event.result as { targetId?: string } | undefined;
       if (result?.targetId) healthByInstance.set(result.targetId, 'healthy');
     }
-    if (event.action === 'diagnose_target_health') {
-      const result = event.result as { targetHealth?: TargetHealthEntry[] } | undefined;
-      for (const entry of result?.targetHealth ?? []) {
+    // Any event carrying per-target health — diagnosis OR a live health poll
+    // during a wait — updates each target's state, so targets visibly climb
+    // initial → healthy instead of snapping straight to green.
+    const withHealth = event.result as { targetHealth?: TargetHealthEntry[] } | undefined;
+    if (withHealth?.targetHealth) {
+      for (const entry of withHealth.targetHealth) {
         if (!entry.targetId) continue;
         healthByInstance.set(
           entry.targetId,
