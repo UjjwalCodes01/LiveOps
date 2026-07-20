@@ -92,7 +92,7 @@ export function StatusPanel() {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Chip icon={ShieldCheck} tone="healthy">
-        Sandbox only
+        Sandbox mode
       </Chip>
 
       {status &&

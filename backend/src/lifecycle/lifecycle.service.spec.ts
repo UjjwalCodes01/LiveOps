@@ -125,6 +125,12 @@ describe('LifecycleService', () => {
       const executor = { cleanupSession: cleanup };
       const sessions = {
         get: jest.fn().mockResolvedValue({ id: 's1', state }),
+        // Passthrough lock — the real one serializes; here it just runs the
+        // callback so the teardown body executes.
+        withOperationLock: jest.fn(
+          (_id: string, _op: string, callback: () => Promise<unknown>) =>
+            callback(),
+        ),
       };
       const emit = jest
         .fn<Promise<void>, [Emitted]>()
@@ -135,12 +141,19 @@ describe('LifecycleService', () => {
         sessions as never,
         { emit } as never,
       );
-      return { service, executor, emit };
+      return { service, executor, emit, sessions };
     }
 
-    it('tears down a completed session and narrates start + completion', async () => {
-      const { service, executor, emit } = build('completed');
+    it('tears down a completed session under the operation lock, narrating start + completion', async () => {
+      const { service, executor, emit, sessions } = build('completed');
       await service.teardownSession('s1');
+      // Serialized under the lock so concurrent teardowns / the TTL cron
+      // can't race the same delete.
+      expect(sessions.withOperationLock).toHaveBeenCalledWith(
+        's1',
+        'teardown',
+        expect.any(Function),
+      );
       expect(executor.cleanupSession).toHaveBeenCalledWith('s1');
       expect(emit.mock.calls.map((call) => call[0].type)).toEqual([
         'action_started',

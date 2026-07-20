@@ -36,57 +36,64 @@ export class LifecycleService {
       );
     const settings = this.config.getOrThrow<ApplicationConfiguration>('app');
     const phase: Phase = 'fix';
-    await this.events
-      .emit({
-        sessionId,
-        phase,
-        type: 'action_started',
-        action: 'teardown_session',
-        explanation: "Tearing down this session's AWS resources on request.",
-      })
-      .catch(() => undefined);
-    if (!settings.awsEnabled) {
+    // Serialize under the session's operation lock so two teardown clicks
+    // can't delete the same resources at once (the second caller gets a 409),
+    // and the TTL cron — which skips sessions with an active lock via
+    // excludeSessionsWithActiveOperation — can't race it either.
+    return this.sessions.withOperationLock(sessionId, 'teardown', async () => {
       await this.events
         .emit({
           sessionId,
           phase,
-          type: 'action_completed',
+          type: 'action_started',
           action: 'teardown_session',
-          explanation:
-            'AWS is disabled, so there are no live resources to remove.',
+          explanation: "Tearing down this session's AWS resources on request.",
         })
         .catch(() => undefined);
+      if (!settings.awsEnabled) {
+        await this.events
+          .emit({
+            sessionId,
+            phase,
+            type: 'action_completed',
+            action: 'teardown_session',
+            explanation:
+              'AWS is disabled, so there are no live resources to remove.',
+          })
+          .catch(() => undefined);
+        return session;
+      }
+      try {
+        await this.executor.cleanupSession(sessionId);
+        await this.events
+          .emit({
+            sessionId,
+            phase,
+            type: 'action_completed',
+            action: 'teardown_session',
+            explanation:
+              'All AWS resources for this session have been removed.',
+          })
+          .catch(() => undefined);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown cleanup failure';
+        this.logger.error(
+          `Manual teardown failed for session ${sessionId}: ${message}`,
+        );
+        await this.events
+          .emit({
+            sessionId,
+            phase,
+            type: 'action_failed',
+            action: 'teardown_session',
+            explanation: `Teardown failed: ${message}`,
+          })
+          .catch(() => undefined);
+        throw new ServiceUnavailableException(`Teardown failed: ${message}`);
+      }
       return session;
-    }
-    try {
-      await this.executor.cleanupSession(sessionId);
-      await this.events
-        .emit({
-          sessionId,
-          phase,
-          type: 'action_completed',
-          action: 'teardown_session',
-          explanation: 'All AWS resources for this session have been removed.',
-        })
-        .catch(() => undefined);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown cleanup failure';
-      this.logger.error(
-        `Manual teardown failed for session ${sessionId}: ${message}`,
-      );
-      await this.events
-        .emit({
-          sessionId,
-          phase,
-          type: 'action_failed',
-          action: 'teardown_session',
-          explanation: `Teardown failed: ${message}`,
-        })
-        .catch(() => undefined);
-      throw new ServiceUnavailableException(`Teardown failed: ${message}`);
-    }
-    return session;
+    });
   }
 
   @Cron('0 */5 * * * *')
