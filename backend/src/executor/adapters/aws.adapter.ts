@@ -489,11 +489,7 @@ export class AwsAdapter {
           (tag) => tag.Key === 'session_id' && tag.Value === sessionId,
         )
       )
-        await this.client.send(
-          new DeleteTargetGroupCommand({
-            TargetGroupArn: targetGroup.TargetGroupArn,
-          }),
-        );
+        await this.deleteTargetGroupWithRetry(targetGroup.TargetGroupArn);
     }
     const instances = await this.ec2.send(
       new DescribeInstancesCommand({
@@ -517,6 +513,40 @@ export class AwsAdapter {
       await this.ec2.send(
         new TerminateInstancesCommand({ InstanceIds: instanceIds }),
       );
+  }
+
+  // Deleting the load balancer removes its listener, but ELB is eventually
+  // consistent: for a few seconds after the LB is gone the target group can
+  // still report itself "in use by a listener or a rule", failing an
+  // immediate DeleteTargetGroup. Retry on exactly that error until the
+  // association clears, so teardown doesn't fail on a transient race.
+  private async deleteTargetGroupWithRetry(
+    targetGroupArn: string,
+    maxAttempts = 6,
+    baseDelayMs = 2_000,
+  ): Promise<void> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.client.send(
+          new DeleteTargetGroupCommand({ TargetGroupArn: targetGroupArn }),
+        );
+        return;
+      } catch (error) {
+        const name =
+          error && typeof error === 'object' && 'name' in error
+            ? String((error as { name: unknown }).name)
+            : '';
+        const message = error instanceof Error ? error.message : '';
+        const stillInUse =
+          name === 'ResourceInUseException' ||
+          name === 'ResourceInUse' ||
+          /currently in use/i.test(message);
+        if (!stillInUse || attempt >= maxAttempts - 1) throw error;
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, baseDelayMs * (attempt + 1)),
+        );
+      }
+    }
   }
 
   async inspectSessionResources(sessionId: string): Promise<{
@@ -1106,9 +1136,9 @@ systemctl enable --now bbf-health.service
         () => undefined,
       );
     if (targetGroupArn)
-      await this.client
-        .send(new DeleteTargetGroupCommand({ TargetGroupArn: targetGroupArn }))
-        .catch(() => undefined);
+      await this.deleteTargetGroupWithRetry(targetGroupArn).catch(
+        () => undefined,
+      );
     if (instanceIds.length)
       await this.ec2
         .send(new TerminateInstancesCommand({ InstanceIds: instanceIds }))

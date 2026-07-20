@@ -300,3 +300,58 @@ describe('AwsAdapter.verifySetup', () => {
     expect(report.ready).toBe(false);
   });
 });
+
+// The private helper behind the teardown "target group in use by a listener"
+// fix — reached via a cast so we don't need to stand up a full cleanup.
+type WithDelete = {
+  client: { send: (command: unknown) => Promise<unknown> };
+  deleteTargetGroupWithRetry: (
+    arn: string,
+    maxAttempts?: number,
+    baseDelayMs?: number,
+  ) => Promise<void>;
+};
+
+describe('AwsAdapter target-group deletion retry', () => {
+  function adapterWithClient(send: () => Promise<unknown>): WithDelete {
+    const adapter = new AwsAdapter({
+      getOrThrow: () => BASE_CONFIG,
+    } as never) as unknown as WithDelete;
+    adapter.client = { send };
+    return adapter;
+  }
+
+  it('retries while the target group is transiently in use, then succeeds', async () => {
+    let calls = 0;
+    const adapter = adapterWithClient(() => {
+      calls += 1;
+      if (calls < 3)
+        return Promise.reject(
+          Object.assign(
+            new Error(
+              'Target group arn:...:targetgroup/x is currently in use by a listener or a rule',
+            ),
+            { name: 'ResourceInUseException' },
+          ),
+        );
+      return Promise.resolve({});
+    });
+    // baseDelayMs 0 so the test doesn't actually wait.
+    await adapter.deleteTargetGroupWithRetry('tg-arn', 6, 0);
+    expect(calls).toBe(3);
+  });
+
+  it('rethrows a non-in-use error immediately without retrying', async () => {
+    let calls = 0;
+    const adapter = adapterWithClient(() => {
+      calls += 1;
+      return Promise.reject(
+        Object.assign(new Error('boom'), { name: 'AccessDenied' }),
+      );
+    });
+    await expect(
+      adapter.deleteTargetGroupWithRetry('tg-arn', 6, 0),
+    ).rejects.toThrow('boom');
+    expect(calls).toBe(1);
+  });
+});
