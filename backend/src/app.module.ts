@@ -7,6 +7,7 @@ import { ApiKeyGuard } from './common/api-key.guard';
 import { AgentModule } from './agent/agent.module';
 import { DiagnosticsController } from './common/diagnostics.controller';
 import { HealthController } from './common/health.controller';
+import { StatusController } from './common/status.controller';
 import { configuration } from './config/configuration';
 import { EventsModule } from './events/events.module';
 import { ExecutorModule } from './executor/executor.module';
@@ -31,7 +32,7 @@ import { LifecycleModule } from './lifecycle/lifecycle.module';
     OrchestrationModule,
     LifecycleModule,
   ],
-  controllers: [HealthController, DiagnosticsController],
+  controllers: [HealthController, DiagnosticsController, StatusController],
   providers: [
     { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },

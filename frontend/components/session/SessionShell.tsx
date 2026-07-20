@@ -12,6 +12,7 @@ import { PhaseStepper } from '@/components/glass/PhaseStepper';
 import { StateBadge } from '@/components/glass/Badge';
 import { SessionProvider, useSession } from '@/components/session/SessionProvider';
 import { ConceptsLearned } from '@/components/learn/ConceptsLearned';
+import { StatusPanel } from '@/components/session/StatusPanel';
 import { getAccessToken } from '@/lib/session-history';
 import { PHASES, type Phase } from '@/lib/types';
 
@@ -42,7 +43,10 @@ function SessionHeader({ sessionId, currentPhase }: { sessionId: string; current
           </Link>
           {session && <StateBadge state={session.state} />}
         </div>
-        <ConnectionStatus state={connection} />
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusPanel />
+          <ConnectionStatus state={connection} />
+        </div>
       </div>
       <PhaseStepper
         sessionId={sessionId}

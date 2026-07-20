@@ -1081,6 +1081,10 @@ systemctl enable --now bbf-health.service
         // load balancer (http://<dnsName><healthPath>) and let anyone hit
         // it — proving the built system is real, not a diagram.
         healthPath: this.settings.awsTargetHealthPath,
+        // When the tagged resources auto-delete (creation + resource TTL) —
+        // drives the live "auto-cleanup in MM:SS" countdown so the cost
+        // ceiling is visible.
+        expiresAt,
         state: loadBalancer.State?.Code,
         targetGroupArn,
         instanceIds,

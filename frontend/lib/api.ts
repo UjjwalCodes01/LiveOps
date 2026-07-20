@@ -44,6 +44,20 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
+export interface PlatformStatus {
+  sandbox: boolean;
+  awsEnabled: boolean;
+  awsRegion: string;
+  sessionTtlMinutes: number;
+  awsResourceTtlMinutes: number;
+}
+
+// Non-sensitive operational metadata for the cost/status panel (region,
+// AWS on/off, lifecycle TTLs). Public endpoint — no session needed.
+export function getStatus(): Promise<PlatformStatus> {
+  return request<PlatformStatus>('/status');
+}
+
 export function createSession(): Promise<CreatedSession> {
   return request<CreatedSession>('/sessions', { method: 'POST' });
 }
