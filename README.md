@@ -187,17 +187,26 @@ Detailed docs: [`backend/README.md`](backend/README.md) (deployment, health chec
 
 **`/feedback` Codex Session ID:** `019f6bf5-f4e9-7b71-8879-8bc8ff430148`
 
-<!--
-  ⚠️ WRITE THE NARRATIVE BELOW YOURSELF, TRUTHFULLY. The hackathon requires a
-  description of how you actually collaborated with Codex and GPT-5.6 — only
-  describe work you genuinely did with Codex. Judges verify this and it is
-  judging criterion #1. Suggested structure:
-    - What you used Codex/GPT-5.6 for (specific features, files, decisions)
-    - Where it accelerated your workflow
-    - Key product/engineering/design decisions you made
--->
+I used Codex and GPT-5.6 as a hands-on engineering collaborator throughout
+Build. Break. Fix. Codex helped me design, implement, and repeatedly audit the
+NestJS backend, including the persistent session/event pipeline, WebSocket
+replay, session-token authorization, the instrumented executor, and the
+agent-to-orchestration flow.
 
-_TODO: describe, in your own words, how you used Codex and GPT-5.6 to build this — the specific parts, where it sped you up, and the decisions you made._
+For the live AWS load-balancing lesson, I used Codex to work through the real
+provisioning lifecycle: EC2 targets, target groups, an Application Load
+Balancer, listener creation, target-health verification, failure injection,
+diagnosis, recovery, rollback, teardown, and orphan-resource cleanup. It also
+helped improve reliability through operation locking, event sanitization,
+throttling/backoff narration, database migrations, CI checks, and deployment
+configuration.
+
+I used Codex to review the frontend/backend contract and the event-driven UI:
+the live architecture diagram, command feed, health polling, teardown controls,
+and replay fallback. I made the final product and infrastructure decisions,
+configured the real sandbox environment, verified the real AWS lifecycle and
+cleanup behavior, captured the replay from a genuine run, and prepared the
+demo/deployment setup.
 
 ---
 
