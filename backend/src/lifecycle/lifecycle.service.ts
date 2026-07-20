@@ -1,8 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { ApplicationConfiguration } from '../config/configuration';
-import { Phase } from '../events/domain';
+import { Phase, Session } from '../events/domain';
 import { EventsService } from '../events/events.service';
 import { ExecutorService } from '../executor/executor.service';
 import { SessionService } from '../sessions/session.service';
@@ -17,6 +22,72 @@ export class LifecycleService {
     private readonly sessions: SessionService,
     private readonly events: EventsService,
   ) {}
+
+  // Explicit, on-demand teardown of a finished demo's AWS resources — the
+  // manual counterpart to the TTL cron. Restricted to terminal sessions
+  // (completed/failed) so it can't race a phase that's still running, and
+  // narrated through the same event pipeline as everything else, so the
+  // cleanup streams to the UI live.
+  async teardownSession(sessionId: string): Promise<Session> {
+    const session = await this.sessions.get(sessionId);
+    if (session.state !== 'completed' && session.state !== 'failed')
+      throw new BadRequestException(
+        `Only a completed or failed session can be torn down (this one is "${session.state}").`,
+      );
+    const settings = this.config.getOrThrow<ApplicationConfiguration>('app');
+    const phase: Phase = 'fix';
+    await this.events
+      .emit({
+        sessionId,
+        phase,
+        type: 'action_started',
+        action: 'teardown_session',
+        explanation: "Tearing down this session's AWS resources on request.",
+      })
+      .catch(() => undefined);
+    if (!settings.awsEnabled) {
+      await this.events
+        .emit({
+          sessionId,
+          phase,
+          type: 'action_completed',
+          action: 'teardown_session',
+          explanation:
+            'AWS is disabled, so there are no live resources to remove.',
+        })
+        .catch(() => undefined);
+      return session;
+    }
+    try {
+      await this.executor.cleanupSession(sessionId);
+      await this.events
+        .emit({
+          sessionId,
+          phase,
+          type: 'action_completed',
+          action: 'teardown_session',
+          explanation: 'All AWS resources for this session have been removed.',
+        })
+        .catch(() => undefined);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown cleanup failure';
+      this.logger.error(
+        `Manual teardown failed for session ${sessionId}: ${message}`,
+      );
+      await this.events
+        .emit({
+          sessionId,
+          phase,
+          type: 'action_failed',
+          action: 'teardown_session',
+          explanation: `Teardown failed: ${message}`,
+        })
+        .catch(() => undefined);
+      throw new ServiceUnavailableException(`Teardown failed: ${message}`);
+    }
+    return session;
+  }
 
   @Cron('0 */5 * * * *')
   async removeExpiredResources(): Promise<void> {

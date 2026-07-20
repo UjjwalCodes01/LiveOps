@@ -114,4 +114,73 @@ describe('LifecycleService', () => {
     expect(sessions.excludeSessionsWithActiveOperation).not.toHaveBeenCalled();
     expect(executor.cleanupSession).not.toHaveBeenCalled();
   });
+
+  describe('teardownSession', () => {
+    type Emitted = { type: string; explanation: string; action?: string };
+    function build(
+      state: string,
+      overrides: Record<string, unknown> = {},
+      cleanup: jest.Mock = jest.fn().mockResolvedValue(undefined),
+    ) {
+      const executor = { cleanupSession: cleanup };
+      const sessions = {
+        get: jest.fn().mockResolvedValue({ id: 's1', state }),
+      };
+      const emit = jest
+        .fn<Promise<void>, [Emitted]>()
+        .mockResolvedValue(undefined);
+      const service = new LifecycleService(
+        makeConfigMock(overrides) as never,
+        executor as never,
+        sessions as never,
+        { emit } as never,
+      );
+      return { service, executor, emit };
+    }
+
+    it('tears down a completed session and narrates start + completion', async () => {
+      const { service, executor, emit } = build('completed');
+      await service.teardownSession('s1');
+      expect(executor.cleanupSession).toHaveBeenCalledWith('s1');
+      expect(emit.mock.calls.map((call) => call[0].type)).toEqual([
+        'action_started',
+        'action_completed',
+      ]);
+    });
+
+    it('refuses to tear down a non-terminal session', async () => {
+      const { service, executor } = build('ready');
+      await expect(service.teardownSession('s1')).rejects.toThrow(
+        /completed or failed/i,
+      );
+      expect(executor.cleanupSession).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op cleanup when AWS is disabled', async () => {
+      const { service, executor, emit } = build('failed', {
+        awsEnabled: false,
+      });
+      await service.teardownSession('s1');
+      expect(executor.cleanupSession).not.toHaveBeenCalled();
+      const completed = emit.mock.calls
+        .map((call) => call[0])
+        .find((event) => event.type === 'action_completed');
+      expect(completed?.explanation).toMatch(/AWS is disabled/i);
+    });
+
+    it('narrates a failure and throws when cleanup errors', async () => {
+      const { service, emit } = build(
+        'completed',
+        {},
+        jest.fn().mockRejectedValue(new Error('AWS is mad')),
+      );
+      await expect(service.teardownSession('s1')).rejects.toThrow(
+        /Teardown failed/i,
+      );
+      const failed = emit.mock.calls
+        .map((call) => call[0])
+        .find((event) => event.type === 'action_failed');
+      expect(failed?.action).toBe('teardown_session');
+    });
+  });
 });

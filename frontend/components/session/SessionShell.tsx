@@ -13,6 +13,7 @@ import { StateBadge } from '@/components/glass/Badge';
 import { SessionProvider, useSession } from '@/components/session/SessionProvider';
 import { ConceptsLearned } from '@/components/learn/ConceptsLearned';
 import { StatusPanel } from '@/components/session/StatusPanel';
+import { TeardownButton } from '@/components/session/TeardownButton';
 import { getAccessToken } from '@/lib/session-history';
 import { PHASES, type Phase } from '@/lib/types';
 
@@ -45,6 +46,7 @@ function SessionHeader({ sessionId, currentPhase }: { sessionId: string; current
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <StatusPanel />
+          <TeardownButton />
           <ConnectionStatus state={connection} />
         </div>
       </div>

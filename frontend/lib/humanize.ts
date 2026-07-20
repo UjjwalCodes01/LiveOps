@@ -22,6 +22,7 @@ const ACTION_LABELS: Record<string, string> = {
   aws_throttled: 'Waiting on AWS (rate limited)',
   cleanup_expired_session: 'Cleaning up unused resources',
   cleanup_expired_resources: 'Cleaning up unused resources',
+  teardown_session: 'Tearing down this session',
 };
 
 export function friendlyAction(action?: string): string | undefined {

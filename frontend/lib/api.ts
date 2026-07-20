@@ -66,6 +66,15 @@ export function getSession(sessionId: string, sessionToken: string): Promise<Ses
   return request<Session>(`/sessions/${sessionId}`, { sessionToken });
 }
 
+// Explicitly tear down a finished (completed/failed) session's AWS resources.
+// The cleanup itself streams back as narrated events over the socket.
+export function teardownSession(sessionId: string, sessionToken: string): Promise<Session> {
+  return request<Session>(`/sessions/${sessionId}/teardown`, {
+    method: 'POST',
+    sessionToken,
+  });
+}
+
 export function getEvents(
   sessionId: string,
   sessionToken: string,

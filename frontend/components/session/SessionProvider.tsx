@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { toast } from 'sonner';
-import { ApiError, getSession, runAgentPhase } from '@/lib/api';
+import { ApiError, getSession, runAgentPhase, teardownSession } from '@/lib/api';
 import { friendlyAction, friendlyExplanation } from '@/lib/humanize';
 import { createEventsSocket, joinSession } from '@/lib/socket';
 import type { Phase, Session, SessionEvent } from '@/lib/types';
@@ -65,6 +65,9 @@ interface SessionContextValue {
   runPhase: (phase: Phase) => Promise<void>;
   running: boolean;
   runError: string | null;
+  teardown: () => Promise<void>;
+  tearingDown: boolean;
+  teardownError: string | null;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -92,6 +95,8 @@ export function SessionProvider({
   const [connection, setConnection] = useState<ConnectionState>('connecting');
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [tearingDown, setTearingDown] = useState(false);
+  const [teardownError, setTeardownError] = useState<string | null>(null);
   const lastTimestampRef = useRef<string | undefined>(undefined);
   const celebratedRef = useRef(false);
 
@@ -206,9 +211,37 @@ export function SessionProvider({
     [sessionId, accessToken],
   );
 
+  const teardown = useCallback(async () => {
+    setTearingDown(true);
+    setTeardownError(null);
+    try {
+      // The narrated cleanup events stream back over the socket; the returned
+      // session reflects the (unchanged terminal) state.
+      const updated = await teardownSession(sessionId, accessToken);
+      setSession(updated);
+    } catch (error) {
+      setTeardownError(
+        error instanceof ApiError ? error.message : 'Teardown failed. Please try again.',
+      );
+    } finally {
+      setTearingDown(false);
+    }
+  }, [sessionId, accessToken]);
+
   return (
     <SessionContext.Provider
-      value={{ session, sessionError, events, connection, runPhase, running, runError }}
+      value={{
+        session,
+        sessionError,
+        events,
+        connection,
+        runPhase,
+        running,
+        runError,
+        teardown,
+        tearingDown,
+        teardownError,
+      }}
     >
       {children}
     </SessionContext.Provider>
