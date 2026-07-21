@@ -16,7 +16,13 @@ export interface ExecutorAction {
 }
 
 export const ALLOWED_ACTIONS_BY_PHASE: Record<Phase, readonly ActionName[]> = {
-  build: ['inspect_load_balancers', 'provision_load_balancer'],
+  // Build must provision — it's the only action that creates the
+  // infrastructure the later phases operate on. Inspecting is what the
+  // Explore phase is for; allowing the read-only inspect here let the agent
+  // "complete" Build as a no-op (describe only), leaving nothing built while
+  // the session still advanced to `ready`. The decision narration is still
+  // generated regardless of the allow-list size.
+  build: ['provision_load_balancer'],
   explore: ['inspect_load_balancers'],
   break: ['inject_target_failure'],
   diagnose: ['diagnose_target_health'],
