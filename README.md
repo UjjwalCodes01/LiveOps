@@ -6,6 +6,7 @@
 
 🎓 **Track:** Education
 🔗 **Live demo:** https://live-ops-plum.vercel.app
+🎬 **Demo video:** https://youtu.be/7gHJ40lKKRM
 🖥️ **Backend API:** https://liveops.onrender.com
 
 ---
