@@ -177,12 +177,11 @@ Nest's control. Common steps regardless of which compute option you pick:
 5. Point your load balancer's health check at `GET /api/health/ready`
    (verifies the database connection), and liveness at `GET /api/health`.
 6. Schedule `scripts/sweep-expired-resources.cjs` independently of the app
-   (`.github/workflows/sweep.yml` is a ready-made hourly GitHub Actions
-   version) so orphaned AWS resources still get cleaned up if the app itself
-   is down.
-7. CI (`.github/workflows/backend-ci.yml`) runs build, lint, unit, and e2e
-   tests on every push/PR touching `backend/`; there is no CD step wired up
-   — deploying is a manual, deliberate action per the steps below.
+   (for example, with your platform scheduler or GitHub Actions) so orphaned
+   AWS resources still get cleaned up if the app itself is down.
+7. Before each deployment, run build, lint, unit, and e2e tests from this
+   directory. There is no CD step wired up — deploying is a manual,
+   deliberate action per the steps below.
 
 ### Render (recommended — one-click via `render.yaml`)
 
@@ -264,4 +263,4 @@ the real sandbox as the final check.
 
 ## License
 
-UNLICENSED — private, not for redistribution (see `package.json`).
+MIT. See [`../LICENSE`](../LICENSE).

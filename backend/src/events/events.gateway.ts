@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'node:crypto';
 import { Server, Socket } from 'socket.io';
 import { ApplicationConfiguration } from '../config/configuration';
+import { createOriginMatcher } from '../config/cors';
 import { SessionService } from '../sessions/session.service';
 import { SessionEvent } from './domain';
 
@@ -31,11 +32,12 @@ export class EventsGateway {
 
   afterInit(server: Server): void {
     const settings = this.config.getOrThrow<ApplicationConfiguration>('app');
+    const isAllowedOrigin = createOriginMatcher(settings.corsOrigins);
     server.use((socket, next) => {
       const origin = socket.handshake.headers.origin;
       const apiKey = (socket.handshake.auth as Record<string, unknown>).apiKey;
       if (
-        (origin && !settings.corsOrigins.includes(origin)) ||
+        !isAllowedOrigin(origin) ||
         !this.matchesApiKey(apiKey, settings.apiKeys)
       )
         return next(new Error('Unauthorized WebSocket connection'));

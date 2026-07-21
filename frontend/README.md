@@ -38,12 +38,12 @@ on Vercel they must be set in the project's Environment Variables settings
 ```bash
 npm run build   # next build — includes the TypeScript check
 npm run lint     # eslint
+npm test         # Vitest unit and contract-drift tests
 ```
 
-CI (`.github/workflows/frontend-ci.yml`) runs both on every push/PR
-touching `frontend/`. There's no test suite yet — no framework is
-installed (no Jest/Vitest/Playwright/RTL); build + lint are the only gates
-that currently exist.
+The frontend has Vitest tests for the curriculum, UI helpers, topology, and
+the hand-maintained frontend/backend event contract. Run all three commands
+before a release or demo.
 
 ## Deploy on Vercel
 

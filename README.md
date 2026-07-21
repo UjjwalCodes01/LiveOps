@@ -208,8 +208,32 @@ configured the real sandbox environment, verified the real AWS lifecycle and
 cleanup behavior, captured the replay from a genuine run, and prepared the
 demo/deployment setup.
 
+### How GPT-5.6 appears in the product
+
+The runtime agent is intentionally constrained: every phase has a verified,
+allow-listed AWS operation, so a model can never turn a teaching session into
+arbitrary cloud access. GPT-5.6 narrates the agent's phase decision and, after
+the Diagnose phase, reads the live `DescribeTargetHealth` telemetry to name
+the affected target, reason code, cause, and targeted recovery. The UI renders
+that model-produced root-cause analysis separately from the raw AWS event log.
+
+This safety boundary is deliberate: the product demonstrates model reasoning
+over real operational data while keeping real, billable infrastructure under
+a deterministic control plane.
+
+## Demo video checklist
+
+For the required <3-minute video, lead with the recovered live endpoint in
+the first 10 seconds, then show the recorded or live Build → Break → Diagnose
+→ Fix sequence. Make three facts explicit in the narration: the AWS resources
+and telemetry are real; GPT-5.6 explains the real diagnosis but is restricted
+to safe allow-listed operations; and Codex accelerated the implementation
+described above. Keep the replay visibly labelled as a recording if it is
+used as a reliability fallback.
+
 ---
 
 ## License
 
-See repository licensing. Built for the OpenAI Build Week hackathon (Education track).
+MIT. See [LICENSE](LICENSE). Built for the OpenAI Build Week hackathon
+(Education track).
