@@ -4,6 +4,7 @@ import { GlassPanel } from '@/components/glass/GlassPanel';
 import { TargetHealthTimeline } from '@/components/metrics/TargetHealthTimeline';
 import { PhaseActionPanel } from '@/components/session/PhaseActionPanel';
 import { PhaseWorkspace } from '@/components/session/PhaseWorkspace';
+import { RootCauseCallout } from '@/components/session/RootCauseCallout';
 import { useSession } from '@/components/session/SessionProvider';
 
 export default function DiagnosePage() {
@@ -18,6 +19,7 @@ export default function DiagnosePage() {
         completedHint="Diagnosis complete — head to Fix to remediate."
         invalidHint={(state) => `Nothing to diagnose yet (currently "${state}"). Break the system first.`}
       />
+      <RootCauseCallout />
       <PhaseWorkspace
         phase="diagnose"
         emptyFeedHint="Run diagnosis to see the agent's investigation step by step."

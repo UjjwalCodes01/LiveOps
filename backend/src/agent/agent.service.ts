@@ -85,12 +85,61 @@ export class AgentService {
       action: decision.action,
       explanation: decision.explanation,
     });
+    let actionResult: Record<string, unknown> | undefined;
     const updatedSession = await this.orchestration.executeAction(
       sessionId,
       phase,
       decision.action,
+      (result) => {
+        actionResult = result;
+      },
     );
+    // After a real diagnosis, hand the live target-health telemetry back to
+    // GPT-5.6 and let it explain the actual root cause in plain language —
+    // the model reasoning over real AWS data, not just picking an action.
+    if (phase === 'diagnose' && actionResult)
+      await this.explainDiagnosis(sessionId, actionResult);
     return { session: updatedSession };
+  }
+
+  private async explainDiagnosis(
+    sessionId: string,
+    result: Record<string, unknown>,
+  ): Promise<void> {
+    // Only meaningful when the LLM is on and there's real health to reason
+    // over. The raw telemetry + health timeline are shown regardless, so
+    // this is a best-effort enrichment — never fail the phase over it.
+    if (!this.settings.openAiEnabled || !this.client) return;
+    const targetHealth = result.targetHealth;
+    if (!Array.isArray(targetHealth) || targetHealth.length === 0) return;
+    try {
+      const completion = await this.client.chat.completions.create({
+        model: this.settings.openAiModel,
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an SRE agent diagnosing an AWS Application Load Balancer target group from real DescribeTargetHealth output. In ONE concise sentence (max 200 characters, no markdown, no preamble), name the specific unhealthy target and its reason code, explain the cause, and state the fix.',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({ targets: targetHealth }),
+          },
+        ],
+      });
+      const explanation = completion.choices[0]?.message.content?.trim();
+      if (!explanation) return;
+      await this.events.emit({
+        sessionId,
+        phase: 'diagnose',
+        type: 'narration',
+        action: 'diagnose_root_cause',
+        explanation,
+      });
+    } catch {
+      // Best-effort — the raw health data and timeline already tell the story.
+    }
   }
 
   private async decide(

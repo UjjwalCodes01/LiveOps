@@ -52,6 +52,7 @@ describe('AgentService (scripted / no-LLM mode)', () => {
       'session-1',
       'build',
       'provision_load_balancer',
+      expect.any(Function),
     );
     // ...narrated as a normal narration, not an "AI unavailable" failure.
     const narration = emitted.find((event) => event.type === 'narration');
@@ -74,7 +75,129 @@ describe('AgentService (scripted / no-LLM mode)', () => {
         'session-1',
         phase,
         expectedAction,
+        expect.any(Function),
       );
     }
+  });
+
+  it('does not emit a GPT root-cause narration in scripted mode', async () => {
+    // With the LLM off, diagnose still runs but there's no model to reason
+    // over the health data, so no 'diagnose_root_cause' narration.
+    const { service, emitted, orchestration } = build('broken');
+    orchestration.executeAction.mockImplementation(
+      (
+        _s: string,
+        _p: string,
+        _a: string,
+        onResult?: (result: Record<string, unknown>) => void,
+      ) => {
+        onResult?.({
+          targetHealth: [
+            {
+              targetId: 'i-abc',
+              state: 'unhealthy',
+              reason: 'Target.Deregistered',
+            },
+          ],
+        });
+        return Promise.resolve(makeSession('diagnosing'));
+      },
+    );
+
+    await service.execute('session-1', 'diagnose');
+
+    expect(
+      emitted.some((event) => event.action === 'diagnose_root_cause'),
+    ).toBe(false);
+  });
+});
+
+// The LLM path: GPT-5.6 reasons over the real target health and narrates the
+// root cause. Uses an injected fake OpenAI client so no network is touched.
+describe('AgentService diagnose root-cause reasoning (LLM path)', () => {
+  it('emits a diagnose_root_cause narration from the model over real health', async () => {
+    const emitted: { type: string; action?: string; explanation: string }[] =
+      [];
+    const events = {
+      emit: (event: { type: string; action?: string; explanation: string }) => {
+        emitted.push(event);
+        return Promise.resolve();
+      },
+    };
+    const orchestration = {
+      executeAction: jest.fn(
+        (
+          _s: string,
+          _p: string,
+          _a: string,
+          onResult?: (result: Record<string, unknown>) => void,
+        ) => {
+          onResult?.({
+            targetHealth: [
+              {
+                targetId: 'i-07ed',
+                state: 'unhealthy',
+                reason: 'Target.Deregistered',
+              },
+            ],
+          });
+          return Promise.resolve(makeSession('diagnosing'));
+        },
+      ),
+    };
+    const sessions = { get: () => Promise.resolve(makeSession('broken')) };
+    const config = {
+      getOrThrow: () => ({
+        openAiEnabled: true,
+        openAiApiKey: 'sk-test',
+        openAiModel: 'gpt-5.6',
+        openAiTimeoutMs: 30000,
+        openAiMaxRetries: 0,
+      }),
+    };
+    const service = new AgentService(
+      config as never,
+      sessions as never,
+      orchestration as never,
+      events as never,
+    );
+    // Inject a fake OpenAI client: decision call returns the action JSON,
+    // the reasoning call (SRE system prompt) returns the root-cause text.
+    (
+      service as unknown as {
+        client: {
+          chat: {
+            completions: {
+              create: (input: {
+                messages: { content: string }[];
+              }) => Promise<{ choices: { message: { content: string } }[] }>;
+            };
+          };
+        };
+      }
+    ).client = {
+      chat: {
+        completions: {
+          create: ({ messages }) => {
+            const system = messages[0].content;
+            const content = system.includes('SRE agent')
+              ? 'Target i-07ed is unhealthy (Target.Deregistered) — it was pulled from the group, so re-register it to recover.'
+              : JSON.stringify({
+                  action: 'diagnose_target_health',
+                  explanation: 'Reading target health.',
+                });
+            return Promise.resolve({ choices: [{ message: { content } }] });
+          },
+        },
+      },
+    };
+
+    await service.execute('session-1', 'diagnose');
+
+    const rootCause = emitted.find(
+      (event) => event.action === 'diagnose_root_cause',
+    );
+    expect(rootCause?.type).toBe('narration');
+    expect(rootCause?.explanation).toContain('Target.Deregistered');
   });
 });

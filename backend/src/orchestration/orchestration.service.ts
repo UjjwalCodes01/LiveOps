@@ -66,6 +66,10 @@ export class OrchestrationService {
     sessionId: string,
     phase: Phase,
     action: ActionName,
+    // Optional hook to observe the executor's raw result (e.g. the agent
+    // reasoning over the real target health after a diagnosis). Non-breaking
+    // for existing callers that don't pass it.
+    onResult?: (result: Record<string, unknown>) => void,
   ): Promise<Session> {
     const state = PHASE_STATES[phase];
     return this.sessions.withOperationLock(sessionId, phase, async () => {
@@ -74,7 +78,12 @@ export class OrchestrationService {
       if (phase === 'build') await this.enforceLiveSessionCap();
       if (state.inProgress) await this.transition(sessionId, state.inProgress);
       try {
-        await this.executor.run({ sessionId, phase, name: action });
+        const result = await this.executor.run({
+          sessionId,
+          phase,
+          name: action,
+        });
+        onResult?.(result);
       } catch (error) {
         // build/fix know their in-progress state already; explore/break/
         // diagnose have none, so read the (unchanged) precondition state

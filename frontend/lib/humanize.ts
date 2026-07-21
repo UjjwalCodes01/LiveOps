@@ -23,6 +23,7 @@ const ACTION_LABELS: Record<string, string> = {
   cleanup_expired_session: 'Cleaning up unused resources',
   cleanup_expired_resources: 'Cleaning up unused resources',
   teardown_session: 'Tearing down this session',
+  diagnose_root_cause: 'Root cause (GPT-5.6)',
 };
 
 export function friendlyAction(action?: string): string | undefined {
