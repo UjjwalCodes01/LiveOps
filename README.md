@@ -222,16 +222,6 @@ This safety boundary is deliberate: the product demonstrates model reasoning
 over real operational data while keeping real, billable infrastructure under
 a deterministic control plane.
 
-## Demo video checklist
-
-For the required <3-minute video, lead with the recovered live endpoint in
-the first 10 seconds, then show the recorded or live Build → Break → Diagnose
-→ Fix sequence. Make three facts explicit in the narration: the AWS resources
-and telemetry are real; GPT-5.6 explains the real diagnosis but is restricted
-to safe allow-listed operations; and Codex accelerated the implementation
-described above. Keep the replay visibly labelled as a recording if it is
-used as a reliability fallback.
-
 ---
 
 ## License
