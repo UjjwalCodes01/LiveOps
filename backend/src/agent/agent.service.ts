@@ -113,9 +113,12 @@ export class AgentService {
     const targetHealth = result.targetHealth;
     if (!Array.isArray(targetHealth) || targetHealth.length === 0) return;
     try {
+      // No temperature override: reasoning models (e.g. the gpt-5.x line)
+      // only accept the default and 400 on any other value. The prompt is
+      // tightly constrained (one sentence, capped length), so sampling
+      // temperature isn't what keeps this useful.
       const completion = await this.client.chat.completions.create({
         model: this.settings.openAiModel,
-        temperature: 0.2,
         messages: [
           {
             role: 'system',
@@ -206,9 +209,12 @@ export class AgentService {
     // invariant is ever broken.
     if (!this.client)
       throw new ServiceUnavailableException('OpenAI client is not configured.');
+    // No temperature override: reasoning models only accept the default
+    // (they 400 on temperature: 0). Determinism here comes from the strict
+    // allow-list + response_format JSON schema and the fallback path, not
+    // from sampling temperature.
     const completion = await this.client.chat.completions.create({
       model: this.settings.openAiModel,
-      temperature: 0,
       messages: [
         {
           role: 'system',
